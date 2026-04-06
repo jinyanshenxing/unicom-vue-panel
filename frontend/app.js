@@ -91,8 +91,47 @@ function showMsg(elId, text, type) {
 }
 
 /* ===== Login ===== */
-// （保持你原来的 login 函数不变，这里省略以节省篇幅）
-// 请保留你原来的 switchLoginTab、handleSmsLogin、sendSms、startCountdown、handleTokenLogin、onLoginSuccess、logout 函数
+function switchLoginTab(type, btn) { /* ... 保持不变 ... */ 
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  show('login-sms', type === 'sms');
+  show('login-token', type === 'token');
+}
+
+async function handleSmsLogin() { /* ... 保持不变 ... */ 
+  // (省略，与你原来一致)
+  const phone = val('inp-phone');
+  if (!/^1[3-9]\d{9}$/.test(phone)) { showMsg('msg-sms', '请输入有效的联通手机号', 'err'); return; }
+  S.phone = phone;
+  if (S.smsStep === 'send') {
+    const btn = id('btn-sms-submit');
+    btn.disabled = true; btn.textContent = '发送中...';
+    try {
+      await api('/send-sms');
+      showMsg('msg-sms', '验证码已发送，请注意查收', 'ok');
+      show('sms-code-group', true);
+      btn.textContent = '登 录';
+      S.smsStep = 'verify';
+      startCountdown();
+    } catch (e) { showMsg('msg-sms', e.message, 'err'); btn.textContent = '获取验证码'; }
+    btn.disabled = false;
+    return;
+  }
+  const code = val('inp-code');
+  if (!code) { showMsg('msg-sms', '请输入验证码', 'err'); return; }
+  const btn = id('btn-sms-submit');
+  btn.disabled = true; btn.textContent = '登录中...';
+  try {
+    const data = await api('/login-sms', { randomNum: code });
+    S.token = data.token || data.ecs_token || data.accessToken || data.result?.token || data.result?.ecs_token || data.data?.token || data.data?.ecs_token || '';
+    onLoginSuccess();
+  } catch (e) {
+    showMsg('msg-sms', e.message, 'err');
+    btn.disabled = false; btn.textContent = '登 录';
+  }
+}
+
+// 其他 login 函数保持不变（sendSms, startCountdown, handleTokenLogin, onLoginSuccess, logout）
 
 /* ===== Data ===== */
 function loadAll() { loadFlow(); loadSpeed(); loadBiz(); }
