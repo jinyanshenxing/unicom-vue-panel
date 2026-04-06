@@ -1,147 +1,336 @@
-var app = new Vue({
-    el: '#app',
-    data: {
-        userInfo: {},
-        flowList: [],
-        packageList: [],
-        activeName: 'first',
-        downloadSpeed: '--', // 下行速率
-        uploadSpeed: '--',   // 上行速率
-        qciLevel: '--',      // QCI等级
-        networkType: '--',   // 网络类型
-        speedStatus: '正常'  // 限速状态
-    },
-    created() {
-        this.initData();
-    },
-    methods: {
-        async initData() {
-            await this.getUserInfo();
-            await this.getFlowData();
-            await this.getSpeedData(); // 重新加入并修复
-            await this.getBizData();
-            // 数据加载完毕后手动计算一次使用率
-            this.$nextTick(() => {
-                this.calcUsageRate();
-            });
-        },
-        
-        // 获取用户基础信息
-        getUserInfo() {
-            return new Promise((resolve) => {
-                axios.get('/api/user').then(res => {
-                    if (res.code === '0000') {
-                        this.userInfo = res.data;
-                    }
-                    resolve();
-                }).catch(() => resolve());
-            });
-        },
-        
-        // 🔥 修复后的流量数据获取（完美适配 xcanusevalue/xusedvalue）
-        getFlowData() {
-            return new Promise((resolve) => {
-                axios.get('/api/flow').then(res => {
-                    let flowArr = [];
-                    // 增加容错判断，确保 res 存在且数据正常
-                    if (res && res.code === '0000' && res.data) {
-                        const data = res.data;
-                        
-                        // 处理 flowSumList 流量汇总
-                        if (data.flowSumList && Array.isArray(data.flowSumList)) {
-                            data.flowSumList.forEach(item => {
-                                // 使用 parseFloat 强制转换，防止字符串导致的计算错误
-                                let total = parseFloat(item.xcanusevalue || 0);
-                                let used = parseFloat(item.xusedvalue || 0);
-                                // 确保剩余流量不为负数
-                                let remain = Math.max(0, total - used).toFixed(2);
+let userData = {
+  phone: "",
+  token: "",
+  flow: null,
+  biz: null,
+  speed: null
+};
 
-                                let flowName = item.flowtype == 1 ? "通用流量" : "定向流量";
-                                
-                                flowArr.push({
-                                    name: flowName,
-                                    total: total.toFixed(2), // 保留两位小数
-                                    used: used.toFixed(2),
-                                    remain: remain,
-                                    unit: "MB"
-                                });
-                            });
-                        }
-                    }
-                    this.flowList = flowArr;
-                    resolve();
-                }).catch(() => {
-                    this.flowList = [];
-                    resolve();
-                });
-            });
-        },
-        
-        // 🔥 修复后的速率数据获取（剥离 HTML 标签，只取数字）
-        getSpeedData() {
-            return new Promise((resolve) => {
-                axios.get('/api/speed').then(res => {
-                    if (res && res.code === '0000') {
-                        let desc = res.data.desc || "";
-                        // 使用正则表达式提取数字
-                        let downMatch = desc.match(/下行峰值速率.*?(\d+(\.\d+)?)/);
-                        let upMatch = desc.match(/上行峰值速率.*?(\d+(\.\d+)?)/);
-                        
-                        // 赋值或保留默认 --
-                        this.downloadSpeed = downMatch ? downMatch[1] : '--';
-                        this.uploadSpeed = upMatch ? upMatch[1] : '--';
-                        
-                        // 解析 QCI 与网络类型（根据你日志中的字段调整）
-                        this.qciLevel = res.data.qciLevel || '--';
-                        this.networkType = res.data.networkType || '5G';
-                    }
-                    resolve();
-                }).catch(() => {
-                    this.downloadSpeed = '查询失败';
-                    this.uploadSpeed = '查询失败';
-                    resolve();
-                });
-            });
-        },
-        
-        // 获取已订业务
-        getBizData() {
-            return new Promise((resolve) => {
-                axios.get('/api/biz').then(res => {
-                    if (res && res.code === '0000') {
-                        this.packageList = res.data.mainProductInfo || [];
-                    }
-                    resolve();
-                }).catch(() => {
-                    this.packageList = [];
-                    resolve();
-                });
-            });
-        },
-        
-        // 手动计算使用率（防止出现 NaN）
-        calcUsageRate() {
-            let totalUsed = 0;
-            let totalTotal = 0;
-            
-            this.flowList.forEach(item => {
-                totalUsed += parseFloat(item.used || 0);
-                totalTotal += parseFloat(item.total || 0);
-            });
-            
-            // 防止除以 0，使用率默认 0%
-            let rate = totalTotal > 0 ? (totalUsed / totalTotal) * 100 : 0;
-            // 页面上的使用率卡片由原来的自动计算改为这里手动赋值
-            document.querySelector('.usage-rate .num').innerText = rate.toFixed(0) + '%';
-        },
-        
-        // 刷新数据
-        refreshData() {
-            this.flowList = [];
-            this.packageList = [];
-            this.downloadSpeed = '--';
-            this.uploadSpeed = '--';
-            this.initData();
-        }
-    }
+// 页面加载
+document.addEventListener("DOMContentLoaded", () => {
+  const token = localStorage.getItem("ecs_token");
+  const phone = localStorage.getItem("unicom_phone");
+  if (token) {
+    userData.token = token;
+    userData.phone = phone;
+    showDash();
+    loadAllData();
+  } else {
+    showLogin();
+  }
 });
+
+// 显示登录页
+function showLogin() {
+  document.getElementById("page-login").style.display = "flex";
+  document.getElementById("page-dash").style.display = "none";
+  document.getElementById("header-user").style.display = "none";
+}
+
+// 显示仪表盘
+function showDash() {
+  document.getElementById("page-login").style.display = "none";
+  document.getElementById("page-dash").style.display = "block";
+  document.getElementById("header-user").style.display = "flex";
+  document.getElementById("header-phone").textContent = userData.phone || "联通用户";
+}
+
+// 退出登录
+function logout() {
+  localStorage.removeItem("ecs_token");
+  localStorage.removeItem("unicom_phone");
+  location.reload();
+}
+
+// 刷新所有数据
+function refreshAll() {
+  loadAllData();
+}
+
+// 加载全部数据
+async function loadAllData() {
+  showLoading();
+  await Promise.all([loadFlow(), loadSpeed(), loadBiz()]);
+  renderAll();
+}
+
+// 显示加载状态
+function showLoading() {
+  document.getElementById("pkg-list").innerHTML = `<div class="loading-row"><div class="spinner"></div>加载中...</div>`;
+  document.getElementById("speed-area").innerHTML = `<div class="loading-row"><div class="spinner"></div>查询中...</div>`;
+  document.getElementById("biz-area").innerHTML = `<div class="loading-row"><div class="spinner"></div>查询中...</div>`;
+}
+
+// ------------------------------
+// 🔥 加载流量数据（适配你的接口）
+// ------------------------------
+async function loadFlow() {
+  try {
+    const res = await fetch("/api/flow", {
+      headers: { "ecs_token": userData.token }
+    });
+    const data = await res.json();
+    userData.flow = data;
+  } catch (e) {
+    userData.flow = { code: "E" };
+  }
+}
+
+// ------------------------------
+// 🔥 加载速率数据
+// ------------------------------
+async function loadSpeed() {
+  try {
+    const res = await fetch("/api/speed", {
+      headers: { "ecs_token": userData.token }
+    });
+    const data = await res.json();
+    userData.speed = data;
+  } catch (e) {
+    userData.speed = { code: "E" };
+  }
+}
+
+// ------------------------------
+// 加载已订业务
+// ------------------------------
+async function loadBiz() {
+  try {
+    const res = await fetch("/api/biz", {
+      headers: { "ecs_token": userData.token }
+    });
+    const data = await res.json();
+    userData.biz = data;
+  } catch (e) {
+    userData.biz = { code: "E" };
+  }
+}
+
+// ------------------------------
+// 🚀 渲染所有数据
+// ------------------------------
+function renderAll() {
+  renderFlow();
+  renderSpeed();
+  renderBiz();
+}
+
+// ------------------------------
+// 🔥 渲染流量（完美适配你的数据）
+// ------------------------------
+function renderFlow() {
+  const flow = userData.flow;
+  if (!flow || flow.code !== "0000") {
+    setFlowEmpty();
+    return;
+  }
+
+  const list = flow.flowSumList || [];
+  let totalTotal = 0;
+  let totalUsed = 0;
+  let html = "";
+
+  list.forEach(item => {
+    const total = parseFloat(item.xcanusevalue || 0);
+    const used = parseFloat(item.xusedvalue || 0);
+    const remain = total - used;
+    const pct = total > 0 ? (used / total * 100).toFixed(1) : 0;
+    const name = item.flowtype == 1 ? "通用流量" : "定向流量";
+
+    totalTotal += total;
+    totalUsed += used;
+
+    html += `
+    <div class="pkg-item">
+      <div class="pkg-name">${name}</div>
+      <div class="pkg-progress">
+        <div class="pkg-bar-bg">
+          <div class="pkg-bar-fill" style="width:${pct}%"></div>
+        </div>
+      </div>
+      <div class="pkg-nums">
+        <span>剩余 ${remain.toFixed(1)} MB</span>
+        <span>${used.toFixed(1)} / ${total.toFixed(1)} MB</span>
+      </div>
+    </div>`;
+  });
+
+  // 顶部汇总
+  const allRemain = totalTotal - totalUsed;
+  const allPct = totalTotal > 0 ? (totalUsed / totalTotal * 100).toFixed(1) : 0;
+
+  document.getElementById("s-remain").textContent = `${allRemain.toFixed(1)} MB`;
+  document.getElementById("s-used").textContent = `${totalUsed.toFixed(1)} MB`;
+  document.getElementById("s-total").textContent = `${totalTotal.toFixed(1)} MB`;
+  document.getElementById("s-pct").textContent = `${allPct}%`;
+  document.getElementById("main-bar").style.width = `${allPct}%`;
+  document.getElementById("bar-used-lbl").textContent = `已用 ${totalUsed.toFixed(1)} MB`;
+  document.getElementById("bar-total-lbl").textContent = `共 ${totalTotal.toFixed(1)} MB`;
+  document.getElementById("pkg-list").innerHTML = html;
+}
+
+// 流量空状态
+function setFlowEmpty() {
+  document.getElementById("s-remain").textContent = "—";
+  document.getElementById("s-used").textContent = "—";
+  document.getElementById("s-total").textContent = "—";
+  document.getElementById("s-pct").textContent = "—";
+  document.getElementById("pkg-list").innerHTML = `<div class="empty-row">暂无流量数据</div>`;
+}
+
+// ------------------------------
+// 渲染速率
+// ------------------------------
+function renderSpeed() {
+  const speed = userData.speed;
+  if (!speed || speed.code !== "0000") {
+    document.getElementById("speed-area").innerHTML = `<div class="error-row">速率查询失败</div>`;
+    document.getElementById("net-badge").textContent = "未知";
+    return;
+  }
+
+  const d = speed.data || {};
+  document.getElementById("net-badge").textContent = d.networkType || "5G";
+  document.getElementById("speed-area").innerHTML = `
+  <div class="speed-info">
+    <div>下行：${d.downSpeed || "--"} Mbps</div>
+    <div>上行：${d.upSpeed || "--"} Mbps</div>
+    <div>QCI：${d.qci || "--"}</div>
+  </div>`;
+}
+
+// ------------------------------
+// 渲染已订业务
+// ------------------------------
+function renderBiz() {
+  const biz = userData.biz;
+  if (!biz || biz.code !== "0000") {
+    document.getElementById("biz-area").innerHTML = `<div class="error-row">查询失败</div>`;
+    return;
+  }
+
+  const list = biz.data.mainProductInfo || [];
+  let html = "";
+  list.forEach(item => {
+    html += `
+    <div class="biz-item">
+      <div>${item.productName}</div>
+      <div class="biz-time">${item.startDate || ""}</div>
+    </div>`;
+  });
+
+  document.getElementById("biz-count").textContent = list.length;
+  document.getElementById("biz-area").innerHTML = html;
+}
+
+// ------------------------------
+// 登录逻辑（保留不动）
+// ------------------------------
+let loginTab = "sms";
+function switchLoginTab(tab, el) {
+  loginTab = tab;
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+  el.classList.add("active");
+  document.getElementById("login-sms").style.display = tab === "sms" ? "block" : "none";
+  document.getElementById("login-token").style.display = tab === "token" ? "block" : "none";
+}
+
+async function sendSms() {
+  const phone = document.getElementById("inp-phone").value.trim();
+  if (!/^1[3-9]\d{9}$/.test(phone)) return alert("手机号错误");
+  const btn = document.getElementById("btn-sms-submit");
+  btn.disabled = true;
+  btn.textContent = "发送中...";
+  try {
+    const res = await fetch("/api/sendCode", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone })
+    });
+    const data = await res.json();
+    if (data.code === "0000") {
+      startCountDown();
+      document.getElementById("sms-code-group").style.display = "block";
+      showMsg("sms", "验证码已发送", "success");
+    } else {
+      showMsg("sms", data.desc || "发送失败", "error");
+    }
+  } catch (e) {
+    showMsg("sms", "请求失败", "error");
+  }
+  btn.disabled = false;
+  btn.textContent = "获取验证码";
+}
+
+function startCountDown() {
+  const btn = document.getElementById("btn-resend");
+  let s = 60;
+  btn.disabled = true;
+  btn.textContent = `${s}秒后重发`;
+  const timer = setInterval(() => {
+    s--;
+    btn.textContent = `${s}秒后重发`;
+    if (s <= 0) {
+      clearInterval(timer);
+      btn.disabled = false;
+      btn.textContent = "重新发送";
+    }
+  }, 1000);
+}
+
+async function handleSmsLogin() {
+  const phone = document.getElementById("inp-phone").value.trim();
+  const code = document.getElementById("inp-code").value.trim();
+  if (!phone || !code) return showMsg("sms", "请输入完整信息", "error");
+  const btn = document.getElementById("btn-sms-submit");
+  btn.disabled = true;
+  btn.textContent = "登录中...";
+  try {
+    const res = await fetch("/api/loginSms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone, code })
+    });
+    const data = await res.json();
+    if (data.code === "0000") {
+      localStorage.setItem("ecs_token", data.data.ecsToken);
+      localStorage.setItem("unicom_phone", phone);
+      location.reload();
+    } else {
+      showMsg("sms", data.desc || "登录失败", "error");
+    }
+  } catch (e) {
+    showMsg("sms", "请求失败", "error");
+  }
+  btn.disabled = false;
+  btn.textContent = "登录";
+}
+
+async function handleTokenLogin() {
+  const token = document.getElementById("inp-token").value.trim();
+  const phone = document.getElementById("inp-token-phone").value.trim();
+  if (!token) return showMsg("token", "请输入Token", "error");
+  try {
+    const res = await fetch("/api/checkToken", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ecs_token: token }
+    });
+    const data = await res.json();
+    if (data.code === "0000") {
+      localStorage.setItem("ecs_token", token);
+      localStorage.setItem("unicom_phone", phone);
+      location.reload();
+    } else {
+      showMsg("token", "Token无效或已过期", "error");
+    }
+  } catch (e) {
+    showMsg("token", "校验失败", "error");
+  }
+}
+
+function showMsg(page, text, type) {
+  const el = document.getElementById(`msg-${page}`);
+  el.textContent = text;
+  el.className = `msg ${type}`;
+  setTimeout(() => (el.textContent = ""), 3000);
+}
