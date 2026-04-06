@@ -1,24 +1,44 @@
-# 构建阶段
-FROM node:20-alpine AS builder
+# ─────────────────────────────────────────────
+# Stage 1 — 汇总阶段（把前端放到 backend/public）
+# ─────────────────────────────────────────────
+FROM node:20-alpine AS assembler
+
 WORKDIR /app
 
-# 系统依赖
-RUN apk add --no-cache python3 make g++
+# 复制后端代码
+COPY backend/package.json ./package.json
+COPY backend/server.js    ./server.js
 
-# 依赖安装
-COPY package*.json ./
-RUN npm install --legacy-peer-deps
+# 复制前端静态文件到 public/
+COPY frontend/             ./public/
 
-# 复制代码
-COPY . .
+# ─────────────────────────────────────────────
+# Stage 2 — 运行阶段（精简镜像）
+# ─────────────────────────────────────────────
+FROM node:20-alpine AS runner
 
-# 构建（最简稳定）
-RUN npm run build
+LABEL org.opencontainers.image.title="unicom-panel"
+LABEL org.opencontainers.image.description="联通流量余量面板"
+LABEL org.opencontainers.image.source="https://github.com/YOUR_USERNAME/unicom-panel"
+LABEL org.opencontainers.image.licenses="MIT"
 
-# 部署阶段
-FROM nginx:alpine
-COPY --from=builder /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+WORKDIR /app
 
-EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+# 创建非 root 用户
+RUN addgroup -g 1001 -S appgroup && \
+    adduser  -u 1001 -S appuser -G appgroup
+
+# 从 assembler 阶段复制完整应用
+COPY --from=assembler --chown=appuser:appgroup /app ./
+
+USER appuser
+
+EXPOSE 3000
+
+ENV PORT=3000 \
+    NODE_ENV=production
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -qO- http://localhost:3000/ > /dev/null || exit 1
+
+CMD ["node", "server.js"]
