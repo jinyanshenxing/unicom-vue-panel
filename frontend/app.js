@@ -1,7 +1,13 @@
 'use strict';
 
 /* ===== State ===== */
-const S = { phone: '', token: '', smsStep: 'send', countdown: 0, timer: null };
+const S = {
+  phone: '',
+  token: '',
+  smsStep: 'send',
+  countdown: 0,
+  timer: null
+};
 
 /* ===== API ===== */
 async function api(path, extra = {}) {
@@ -24,9 +30,9 @@ async function api(path, extra = {}) {
   return data;
 }
 
-/* ===== Helpers ===== */
+/* ===== Base Helpers ===== */
 const id = i => document.getElementById(i);
-const val = i => id(i).value.trim();
+const val = i => (id(i)?.value || '').trim();
 
 const esc = s => String(s)
   .replace(/&/g, '&amp;')
@@ -103,6 +109,12 @@ function fmtFlow(mb) {
   return mb.toFixed(2).replace(/\.00$/, '') + ' MB';
 }
 
+function fmtNumber(v) {
+  if (v === undefined || v === null || v === '') return '—';
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? String(n) : String(v);
+}
+
 function show(elId, visible) {
   const el = id(elId);
   if (el) el.style.display = visible ? '' : 'none';
@@ -128,6 +140,152 @@ function extractPriceFromName(name) {
   return m ? m[1] : '';
 }
 
+function colorByPercent(percent) {
+  if (percent >= 100) return '#111827';
+  if (percent > 85) return '#ef4444';
+  if (percent > 60) return '#f59e0b';
+  return '#2563eb';
+}
+
+function uniqBy(arr, getKey) {
+  const m = new Map();
+  arr.forEach(item => {
+    const key = getKey(item);
+    if (!m.has(key)) m.set(key, item);
+  });
+  return [...m.values()];
+}
+
+/* ===== Flow Helpers ===== */
+function normalizeFlowItem(p, idx = 0, source = '') {
+  let left = parseMB(firstNonEmpty(
+    p.xcanusevalue,
+    p.canusevalue,
+    p.leftFlow,
+    p.remainFlow,
+    p.left,
+    p.remainSize,
+    p.surplusFlow,
+    p.balance
+  ));
+
+  let used = parseMB(firstNonEmpty(
+    p.xusedvalue,
+    p.usedFlow,
+    p.used,
+    p.usedSize,
+    p.useFlow,
+    p.usedTraffic,
+    p.usedAmount
+  ));
+
+  let total = parseMB(firstNonEmpty(
+    p.xtotalvalue,
+    p.total,
+    p.packageFlow,
+    p.flowSize,
+    p.totalFlow,
+    p.totalSize,
+    p.allSize
+  ));
+
+  if (!total && (left || used)) total = left + used;
+  if (!left && total && used) left = Math.max(total - used, 0);
+
+  const name = firstNonEmpty(
+    p.feePolicyName,
+    p.packageName,
+    p.name,
+    p.productName,
+    p.offerName,
+    p.pkgName,
+    source === 'sum' ? `套餐流量${idx ? idx + 1 : ''}` :
+    source === 'xsb' ? `专属流量${idx ? idx + 1 : ''}` :
+    `流量包${idx + 1}`
+  );
+
+  const unlimited = /无限|不限量/.test(String(name || ''));
+  const voice = /语音|分钟|通话/.test(String(name || ''));
+  const exclusive = source === 'xsb' || /专属|定向|免流|头条|腾讯|阿里|百度|抖音|快手|爱奇艺|优酷/.test(String(name || ''));
+
+  const percent = total > 0 ? Math.round((used / total) * 10000) / 100 : 0;
+
+  return {
+    name,
+    used,
+    left,
+    total,
+    percent,
+    unlimited,
+    exclusive,
+    voice,
+    shared: !exclusive,
+    source,
+    raw: p
+  };
+}
+
+function renderFlowTags(item) {
+  const tags = [];
+
+  if (item.voice) {
+    tags.push('<span class="flow-tag gray">语音</span>');
+  } else if (item.exclusive) {
+    tags.push('<span class="flow-tag green">专属</span>');
+  } else {
+    tags.push('<span class="flow-tag gray">通用</span>');
+  }
+
+  tags.push(`<span class="flow-tag ${item.shared ? 'gray' : 'slate'}">${item.shared ? '共享' : '非共享'}</span>`);
+  tags.push(`<span class="flow-tag ${item.unlimited ? 'yellow' : 'gray'}">${item.unlimited ? '无限量' : '有上限'}</span>`);
+
+  return tags.join('');
+}
+
+function renderFlowCard(item, compact = false) {
+  const icon = item.voice ? '☎' : '≋';
+  const barBg = item.unlimited
+    ? 'linear-gradient(90deg,#8b5cf6,#ef4444,#f59e0b,#84cc16,#06b6d4,#6366f1)'
+    : colorByPercent(item.percent);
+
+  return `
+    <div class="flow-card ${compact ? 'compact' : ''}">
+      <div class="flow-card-head">
+        <div class="flow-card-title">${esc(item.name)}</div>
+        <div class="flow-card-icon">${icon}</div>
+      </div>
+
+      <div class="flow-card-value">${esc(fmtFlow(item.used))}</div>
+
+      <div class="flow-card-sub">
+        <div>总：${esc(item.unlimited ? '∞' : fmtFlow(item.total))}</div>
+        <div>剩：${esc(fmtFlow(item.left))}</div>
+      </div>
+
+      <div class="flow-card-tags">
+        ${renderFlowTags(item)}
+      </div>
+
+      <div class="flow-card-foot">
+        <span>总量</span>
+        <span>${item.unlimited ? '无限量' : `${item.percent.toFixed(2)}%`}</span>
+      </div>
+
+      <div class="flow-card-bar-bg">
+        <div class="flow-card-bar" style="width:${item.unlimited ? 100 : Math.min(item.percent, 100)}%;background:${barBg}"></div>
+      </div>
+    </div>
+  `;
+}
+
+function toggleMoreFlows(btn) {
+  const box = id('more-flow-list');
+  if (!box) return;
+  const hidden = box.classList.toggle('collapsed');
+  btn.textContent = hidden ? '展开' : '收起';
+}
+window.toggleMoreFlows = toggleMoreFlows;
+
 /* ===== Login ===== */
 function switchLoginTab(type, btn) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -135,6 +293,7 @@ function switchLoginTab(type, btn) {
   show('login-sms', type === 'sms');
   show('login-token', type === 'token');
 }
+window.switchLoginTab = switchLoginTab;
 
 async function handleSmsLogin() {
   const phone = val('inp-phone');
@@ -196,6 +355,7 @@ async function handleSmsLogin() {
     btn.textContent = '登 录';
   }
 }
+window.handleSmsLogin = handleSmsLogin;
 
 async function sendSms() {
   const phone = val('inp-phone');
@@ -211,10 +371,13 @@ async function sendSms() {
     showMsg('msg-sms', e.message, 'err');
   }
 }
+window.sendSms = sendSms;
 
 function startCountdown() {
   S.countdown = 60;
   const btn = id('btn-resend');
+  if (!btn) return;
+
   btn.disabled = true;
   btn.textContent = `${S.countdown}s 后重发`;
 
@@ -241,8 +404,10 @@ async function handleTokenLogin() {
   S.phone = val('inp-token-phone');
 
   const btn = document.querySelector('#login-token .btn-primary');
-  btn.disabled = true;
-  btn.textContent = '验证中...';
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '验证中...';
+  }
 
   try {
     await api('/flow');
@@ -250,16 +415,19 @@ async function handleTokenLogin() {
   } catch (e) {
     showMsg('msg-token', 'Token 无效或已过期：' + e.message, 'err');
     S.token = '';
-    btn.disabled = false;
-    btn.textContent = '验证并登录';
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '验证并登录';
+    }
   }
 }
+window.handleTokenLogin = handleTokenLogin;
 
 function onLoginSuccess() {
   show('page-login', false);
   show('page-dash', true);
   show('header-user', true);
-  id('header-phone').textContent = S.phone || '已登录';
+  if (id('header-phone')) id('header-phone').textContent = S.phone || '已登录';
   loadAll();
 }
 
@@ -272,9 +440,12 @@ function logout() {
   show('header-user', false);
   show('sms-code-group', false);
 
-  id('btn-sms-submit').textContent = '获取验证码';
-  ['inp-phone', 'inp-code', 'inp-token', 'inp-token-phone'].forEach(i => id(i).value = '');
+  if (id('btn-sms-submit')) id('btn-sms-submit').textContent = '获取验证码';
+  ['inp-phone', 'inp-code', 'inp-token', 'inp-token-phone'].forEach(i => {
+    if (id(i)) id(i).value = '';
+  });
 }
+window.logout = logout;
 
 /* ===== Data ===== */
 function loadAll() {
@@ -282,18 +453,21 @@ function loadAll() {
   loadSpeed();
   loadBiz();
 }
+window.loadAll = loadAll;
 
 async function refreshAll() {
   const btn = id('btn-refresh');
-  btn.classList.add('spinning');
+  if (btn) btn.classList.add('spinning');
 
-  id('pkg-list').innerHTML = '<div class="loading-row"><div class="spinner"></div>刷新中...</div>';
-  id('speed-area').innerHTML = '<div class="loading-row"><div class="spinner"></div>查询中...</div>';
-  id('biz-area').innerHTML = '<div class="loading-row"><div class="spinner"></div>查询中...</div>';
+  if (id('pkg-list')) id('pkg-list').innerHTML = '<div class="loading-row"><div class="spinner"></div>刷新中...</div>';
+  if (id('speed-area')) id('speed-area').innerHTML = '<div class="loading-row"><div class="spinner"></div>查询中...</div>';
+  if (id('biz-area')) id('biz-area').innerHTML = '<div class="loading-row"><div class="spinner"></div>查询中...</div>';
 
   await Promise.allSettled([loadFlow(), loadSpeed(), loadBiz()]);
-  btn.classList.remove('spinning');
+
+  if (btn) btn.classList.remove('spinning');
 }
+window.refreshAll = refreshAll;
 
 /* ── Flow ── */
 async function loadFlow() {
@@ -301,180 +475,88 @@ async function loadFlow() {
     const data = await api('/flow');
     renderFlow(data);
   } catch (e) {
-    id('pkg-list').innerHTML = `<div class="error-tip">流量查询失败：${esc(e.message)}<br>
+    if (id('pkg-list')) {
+      id('pkg-list').innerHTML = `<div class="error-tip">流量查询失败：${esc(e.message)}<br>
       <small style="color:var(--text-3)">请按 F12 → Console 查看 [API] /flow 原始响应</small></div>`;
+    }
   }
 }
 
 function renderFlow(data) {
-  const sumList = Array.isArray(data.flowSumList) ? data.flowSumList : [];
-  const xsbList = Array.isArray(data.XsBResources) ? data.XsBResources : [];
-  const details = Array.isArray(data.details) ? data.details : [];
+  const sumList = Array.isArray(data?.flowSumList) ? data.flowSumList : [];
+  const xsbList = Array.isArray(data?.XsBResources) ? data.XsBResources : [];
+  const details = Array.isArray(data?.details) ? data.details : [];
 
   console.log('[flow] sumList=', sumList, ' xsbList=', xsbList, ' details=', details);
 
-  let summary = null;
-  if (sumList.length) {
-    summary = sumList[0];
-  } else {
-    summary = data;
-  }
+  const summary = sumList[0] || {};
 
-  let left = parseMB(firstNonEmpty(
-    summary?.xcanusevalue,
-    summary?.canusevalue,
-    summary?.leftFlow,
-    summary?.remainFlow,
-    summary?.left,
-    summary?.remainSize,
-    summary?.surplusFlow,
-    summary?.balance
-  ));
+  let totalLeft = parseMB(summary.xcanusevalue);
+  let totalUsed = parseMB(summary.xusedvalue);
+  let totalFlow = parseMB(summary.xtotalvalue);
 
-  let used = parseMB(firstNonEmpty(
-    summary?.xusedvalue,
-    summary?.usedFlow,
-    summary?.used,
-    summary?.usedSize,
-    summary?.useFlow,
-    summary?.usedTraffic,
-    summary?.usedAmount
-  ));
+  if (!totalFlow && (totalLeft || totalUsed)) totalFlow = totalLeft + totalUsed;
+  const totalPct = totalFlow > 0 ? Math.round((totalUsed / totalFlow) * 100) : 0;
 
-  let total = parseMB(firstNonEmpty(
-    summary?.xtotalvalue,
-    summary?.total,
-    summary?.packageFlow,
-    summary?.flowSize,
-    summary?.totalFlow,
-    summary?.totalSize,
-    summary?.allSize
-  ));
+  if (id('s-remain')) id('s-remain').textContent = fmtFlow(totalLeft);
+  if (id('s-used')) id('s-used').textContent = fmtFlow(totalUsed);
+  if (id('s-total')) id('s-total').textContent = fmtFlow(totalFlow);
+  if (id('s-pct')) id('s-pct').textContent = totalPct + '%';
 
-  if (!total && (left || used)) total = left + used;
-  if (!left && total && used) left = Math.max(total - used, 0);
-
-  const pct = total > 0 ? Math.round((used / total) * 100) : 0;
-
-  id('s-remain').textContent = fmtFlow(left);
-  id('s-used').textContent = fmtFlow(used);
-  id('s-total').textContent = fmtFlow(total);
-  id('s-pct').textContent = pct + '%';
-
-  id('bar-used-lbl').textContent = '已用 ' + fmtFlow(used);
-  id('bar-total-lbl').textContent = '共 ' + fmtFlow(total);
+  if (id('bar-used-lbl')) id('bar-used-lbl').textContent = '已用 ' + fmtFlow(totalUsed);
+  if (id('bar-total-lbl')) id('bar-total-lbl').textContent = '共 ' + fmtFlow(totalFlow);
 
   const bar = id('main-bar');
-  bar.style.width = Math.min(pct, 100) + '%';
-  bar.style.background = pct > 85 ? '#ef4444' : pct > 60 ? '#f59e0b' : '#2563eb';
-
-  let pkgSource = [];
-  if (details.length) {
-    pkgSource = details;
-  } else if (xsbList.length) {
-    pkgSource = xsbList;
-  } else if (sumList.length) {
-    pkgSource = sumList;
+  if (bar) {
+    bar.style.width = Math.min(totalPct, 100) + '%';
+    bar.style.background = colorByPercent(totalPct);
   }
 
-  const list = pkgSource.map((p, idx) => {
-    let l = parseMB(firstNonEmpty(
-      p.xcanusevalue,
-      p.canusevalue,
-      p.leftFlow,
-      p.remainFlow,
-      p.left,
-      p.remainSize,
-      p.surplusFlow,
-      p.balance
-    ));
+  const sumCards = sumList.map((item, idx) => normalizeFlowItem(item, idx, 'sum'));
+  const xsbCards = xsbList.map((item, idx) => normalizeFlowItem(item, idx, 'xsb'));
+  const detailCards = details.map((item, idx) => normalizeFlowItem(item, idx, 'detail'));
 
-    let u = parseMB(firstNonEmpty(
-      p.xusedvalue,
-      p.usedFlow,
-      p.used,
-      p.usedSize,
-      p.useFlow,
-      p.usedTraffic,
-      p.usedAmount
-    ));
+  let cards = uniqBy(
+    [...sumCards, ...xsbCards, ...detailCards],
+    item => `${item.name}_${item.total}_${item.used}_${item.left}`
+  );
 
-    let t = parseMB(firstNonEmpty(
-      p.xtotalvalue,
-      p.total,
-      p.packageFlow,
-      p.flowSize,
-      p.totalFlow,
-      p.totalSize,
-      p.allSize
-    ));
+  if (!cards.length && totalFlow > 0) {
+    cards = [{
+      name: '套餐总流量',
+      used: totalUsed,
+      left: totalLeft,
+      total: totalFlow,
+      percent: totalFlow > 0 ? Math.round((totalUsed / totalFlow) * 10000) / 100 : 0,
+      unlimited: false,
+      exclusive: false,
+      voice: false,
+      shared: true,
+      source: 'sum',
+      raw: summary
+    }];
+  }
 
-    if (!t && (l || u)) t = l + u;
-    if (!l && t && u) l = Math.max(t - u, 0);
+  const firstCards = cards.slice(0, 4);
+  const restCards = cards.slice(4);
 
-    const pp = t > 0 ? Math.round((u / t) * 100) : 0;
-    const cls = pp > 85 ? 'red' : pp > 60 ? 'amber' : 'green';
-    const barColor = pp > 85 ? '#ef4444' : pp > 60 ? '#f59e0b' : '#2563eb';
+  let html = '<div class="flow-grid">';
+  html += firstCards.map(item => renderFlowCard(item)).join('');
+  html += '</div>';
 
-    return {
-      name: firstNonEmpty(
-        p.feePolicyName,
-        p.packageName,
-        p.name,
-        p.productName,
-        p.offerName,
-        p.pkgName,
-        idx === 0 ? '通用流量' : '专属流量'
-      ),
-      l, u, t, pp, cls, barColor,
-      expire: firstNonEmpty(
-        p.expireDate,
-        p.endDate,
-        p.expiryDate,
-        p.validDate,
-        p.endTime
-      ) || ''
-    };
-  });
-
-  if (!list.length && total > 0) {
-    id('pkg-list').innerHTML = `<div class="pkg-item enhanced">
-      <div class="pkg-main">
-        <div class="pkg-title-row">
-          <div class="pkg-name">套餐流量</div>
-          <span class="pkg-pct ${pct > 85 ? 'red' : pct > 60 ? 'amber' : 'green'}">已用 ${pct}%</span>
-        </div>
-        <div class="mini-bar-bg"><div class="mini-bar" style="width:${Math.min(pct, 100)}%;background:${pct > 85 ? '#ef4444' : pct > 60 ? '#f59e0b' : '#2563eb'}"></div></div>
-        <div class="pkg-meta">
-          <span>剩余 ${fmtFlow(left)}</span>
-          <span>总量 ${fmtFlow(total)}</span>
-        </div>
+  if (restCards.length) {
+    html += `
+      <div class="flow-more-head">
+        <span>其他流量包 (${restCards.length})</span>
+        <button class="flow-toggle-btn" onclick="toggleMoreFlows(this)">收起</button>
       </div>
-    </div>`;
-    return;
-  }
-
-  if (!list.length) {
-    id('pkg-list').innerHTML = '<div class="empty-tip">暂无流量包信息</div>';
-    return;
-  }
-
-  id('pkg-list').innerHTML = list.map(p => `
-    <div class="pkg-item enhanced">
-      <div class="pkg-main">
-        <div class="pkg-title-row">
-          <div class="pkg-name">${esc(p.name)}</div>
-          <span class="pkg-pct ${p.cls}">已用 ${p.pp}%</span>
-        </div>
-        ${p.expire ? `<div class="pkg-expire">到期时间：${esc(p.expire)}</div>` : '<div class="pkg-expire">&nbsp;</div>'}
-        <div class="mini-bar-bg"><div class="mini-bar" style="width:${Math.min(p.pp, 100)}%;background:${p.barColor}"></div></div>
-        <div class="pkg-meta">
-          <span>剩余 ${fmtFlow(p.l)}</span>
-          <span>总量 ${fmtFlow(p.t)}</span>
-        </div>
+      <div id="more-flow-list" class="flow-grid flow-grid-more">
+        ${restCards.map(item => renderFlowCard(item, true)).join('')}
       </div>
-    </div>
-  `).join('');
+    `;
+  }
+
+  if (id('pkg-list')) id('pkg-list').innerHTML = html || '<div class="empty-tip">暂无流量包信息</div>';
 }
 
 /* ── Speed ── */
@@ -483,7 +565,9 @@ async function loadSpeed() {
     const data = await api('/speed');
     renderSpeed(data);
   } catch (e) {
-    id('speed-area').innerHTML = `<div class="error-tip">速率查询失败：${esc(e.message)}</div>`;
+    if (id('speed-area')) {
+      id('speed-area').innerHTML = `<div class="error-tip">速率查询失败：${esc(e.message)}</div>`;
+    }
   }
 }
 
@@ -520,32 +604,35 @@ function renderSpeed(data) {
 
   const limitFlag = ['0', 0, 'true', true, 'yes', 'limited', 'LIMITED'].includes(state);
 
-  id('net-badge').textContent = net;
+  if (id('net-badge')) id('net-badge').textContent = net;
 
-  id('speed-area').innerHTML = `
-    <div class="speed-pair">
-      <div class="speed-block modern">
-        <div class="speed-icon dl">↓</div>
-        <div>
-          <div class="speed-val">${dl || '—'}</div>
-          <div class="speed-unit">Mbps 下行</div>
+  if (id('speed-area')) {
+    id('speed-area').innerHTML = `
+      <div class="speed-pair">
+        <div class="speed-block modern">
+          <div class="speed-icon dl">↓</div>
+          <div>
+            <div class="speed-val">${esc(fmtNumber(dl || '—'))}</div>
+            <div class="speed-unit">Mbps 下行</div>
+          </div>
+        </div>
+        <div class="speed-block modern">
+          <div class="speed-icon ul">↑</div>
+          <div>
+            <div class="speed-val">${esc(fmtNumber(ul || '—'))}</div>
+            <div class="speed-unit">Mbps 上行</div>
+          </div>
         </div>
       </div>
-      <div class="speed-block modern">
-        <div class="speed-icon ul">↑</div>
-        <div>
-          <div class="speed-val">${ul || '—'}</div>
-          <div class="speed-unit">Mbps 上行</div>
-        </div>
+      <div class="info-rows">
+        ${row('QCI 等级', esc(String(qci)))}
+        ${row('网络类型', esc(String(net)))}
+        ${row('限速状态', limitFlag
+          ? '<span class="pkg-pct amber">已限速</span>'
+          : '<span class="pkg-pct green">正常</span>')}
       </div>
-    </div>
-    <div class="info-rows">
-      ${row('QCI 等级', esc(String(qci)))}
-      ${row('网络类型', esc(String(net)))}
-      ${row('限速状态', limitFlag
-        ? '<span class="pkg-pct amber">已限速</span>'
-        : '<span class="pkg-pct green">正常</span>')}
-    </div>`;
+    `;
+  }
 }
 
 /* ── Biz ── */
@@ -554,7 +641,9 @@ async function loadBiz() {
     const data = await api('/biz');
     renderBiz(data);
   } catch (e) {
-    id('biz-area').innerHTML = `<div class="error-tip">业务查询失败：${esc(e.message)}</div>`;
+    if (id('biz-area')) {
+      id('biz-area').innerHTML = `<div class="error-tip">业务查询失败：${esc(e.message)}</div>`;
+    }
   }
 }
 
@@ -581,70 +670,72 @@ function renderBiz(data) {
 
   console.log('[biz] items count=', list.length, ' first=', list[0]);
 
-  id('biz-count').textContent = list.length ? list.length + ' 项' : '';
+  if (id('biz-count')) {
+    id('biz-count').textContent = list.length ? list.length + ' 项' : '';
+  }
 
   if (!list.length) {
-    id('biz-area').innerHTML = '<div class="empty-tip">暂无已订业务</div>';
+    if (id('biz-area')) id('biz-area').innerHTML = '<div class="empty-tip">暂无已订业务</div>';
     return;
   }
 
-  id('biz-area').innerHTML = list.map((b, idx) => {
-    const name = firstNonEmpty(
-      b.serviceName,
-      b.name,
-      b.productName,
-      b.offerName,
-      b.bizName,
-      b.spName,
-      '业务'
-    );
+  if (id('biz-area')) {
+    id('biz-area').innerHTML = list.map((b, idx) => {
+      const name = firstNonEmpty(
+        b.serviceName,
+        b.name,
+        b.productName,
+        b.offerName,
+        b.bizName,
+        b.spName,
+        '业务'
+      );
 
-    const date = firstNonEmpty(
-      b.subscribeDate,
-      b.createDate,
-      b.orderDate,
-      b.startDate,
-      b.orderTime,
-      b.orderTimeStr,
-      ''
-    );
+      const date = firstNonEmpty(
+        b.subscribeDate,
+        b.createDate,
+        b.orderDate,
+        b.startDate,
+        b.orderTime,
+        b.orderTimeStr,
+        ''
+      );
 
-    let price = firstNonEmpty(
-      b.price,
-      b.fee,
-      b.month_fee,
-      b.monthFee,
-      b.chargeFee,
-      b.cost,
-      b.amount,
-      b.productFee
-    );
+      let price = firstNonEmpty(
+        b.price,
+        b.fee,
+        b.month_fee,
+        b.monthFee,
+        b.chargeFee,
+        b.cost,
+        b.amount,
+        b.productFee
+      );
 
-    if (!price) {
-      price = extractPriceFromName(name);
-    }
+      if (!price) price = extractPriceFromName(name);
 
-    const statusText =
-      b.orderStatus === '0' ? '生效中' :
-      b.orderStatus === '1' ? '处理中' :
-      '已订购';
+      const statusText =
+        b.orderStatus === '0' ? '生效中' :
+        b.orderStatus === '1' ? '处理中' :
+        '已订购';
 
-    return `
-      <div class="biz-card">
-        <div class="biz-card-left">
-          <div class="biz-dot ${idx % 2 === 0 ? 'blue' : 'green'}"></div>
-          <div class="biz-content">
-            <div class="biz-name">${esc(String(name))}</div>
-            <div class="biz-sub">
-              ${date ? `<span>${esc(String(date))}</span>` : '<span>已订购业务</span>'}
-              <span class="biz-status">${statusText}</span>
+      return `
+        <div class="biz-card">
+          <div class="biz-card-left">
+            <div class="biz-dot ${idx % 2 === 0 ? 'blue' : 'green'}"></div>
+            <div class="biz-content">
+              <div class="biz-name">${esc(String(name))}</div>
+              <div class="biz-sub">
+                ${date ? `<span>${esc(String(date))}</span>` : '<span>已订购业务</span>'}
+                <span class="biz-status">${statusText}</span>
+              </div>
             </div>
           </div>
+          <div class="biz-card-right">
+            <span class="biz-tag">${price ? `¥${esc(String(price))}/月` : '套餐'}</span>
+          </div>
         </div>
-        <div class="biz-card-right">
-          <span class="biz-tag">${price ? `¥${esc(String(price))}/月` : '套餐'}</span>
-        </div>
-      </div>
-    `;
-  }).join('');
+      `;
+    }).join('');
+  }
 }
