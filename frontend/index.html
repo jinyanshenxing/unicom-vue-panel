@@ -3,153 +3,176 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>联通余量面板</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><text y='20' font-size='20'>📶</text></svg>" />
-  <link rel="stylesheet" href="style.css" />
+  <title>联通流量面板</title>
+  <meta name="theme-color" content="#2563eb" />
+  <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
-  <div id="app">
+  <div class="page">
+
+    <!-- 顶部 -->
     <header class="header">
-      <div class="header-inner">
-        <div class="logo">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 6l5 5 5-5 5 5 5-5"/><path d="M1 12l5 5 5-5 5 5 5-5"/></svg>
-          <span>联通余量面板</span>
-        </div>
-        <div id="header-user" style="display:none" class="header-right">
-          <span id="header-phone" class="phone-tag"></span>
-          <button class="btn-ghost" onclick="logout()">退出</button>
-        </div>
+      <div>
+        <div class="header-title">联通流量面板</div>
+        <div class="login-sub">登录后查看套餐流量、速率与已订业务</div>
+      </div>
+
+      <div id="header-user" class="header-user" style="display:none;">
+        <span id="header-phone">已登录</span>
+        <button class="btn-ghost" onclick="logout()">退出登录</button>
       </div>
     </header>
 
-    <!-- ===== 登录页 ===== -->
-    <main id="page-login" class="page-center">
-      <div class="login-card">
-        <div class="login-brand">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 6l5 5 5-5 5 5 5-5"/><path d="M1 12l5 5 5-5 5 5 5-5"/></svg>
-        </div>
-        <h1 class="login-title">联通余量面板</h1>
-        <p class="login-sub">流量 · 速率 · 套餐查询</p>
+    <!-- 登录页 -->
+    <section id="page-login">
+      <div class="login-wrap">
+        <div class="login-title">登录</div>
+        <div class="login-sub">支持短信验证码登录 / ECS Token 登录</div>
 
-        <div class="tab-switch">
-          <button class="tab-btn active" onclick="switchLoginTab('sms', this)">短信验证码</button>
-          <button class="tab-btn" onclick="switchLoginTab('token', this)">ECS Token</button>
+        <div class="tabs">
+          <button class="tab-btn active" onclick="switchLoginTab('sms', this)">短信登录</button>
+          <button class="tab-btn" onclick="switchLoginTab('token', this)">Token 登录</button>
         </div>
 
         <!-- 短信登录 -->
         <div id="login-sms">
           <div class="form-group">
-            <label>手机号</label>
-            <input type="tel" id="inp-phone" placeholder="请输入联通手机号" maxlength="11"
-              onkeydown="if(event.key==='Enter')handleSmsLogin()" />
+            <input id="inp-phone" type="tel" placeholder="请输入联通手机号" maxlength="11" />
           </div>
-          <div class="form-group" id="sms-code-group" style="display:none">
-            <label>验证码</label>
-            <div class="row-gap">
-              <input type="text" id="inp-code" placeholder="6 位短信验证码" maxlength="6"
-                onkeydown="if(event.key==='Enter')handleSmsLogin()" />
-              <button class="btn-outline" id="btn-resend" onclick="sendSms()" disabled>重新发送</button>
+
+          <div id="sms-code-group" style="display:none;">
+            <div class="form-group">
+              <input id="inp-code" type="text" placeholder="请输入短信验证码" maxlength="8" />
+            </div>
+            <div class="form-group" style="display:flex;justify-content:flex-end;">
+              <button id="btn-resend" class="btn-ghost" onclick="sendSms()" disabled>60s 后重发</button>
             </div>
           </div>
+
+          <div class="form-group">
+            <button id="btn-sms-submit" class="btn-primary" style="width:100%;" onclick="handleSmsLogin()">获取验证码</button>
+          </div>
+
           <div id="msg-sms" class="msg"></div>
-          <button class="btn-primary w-full" id="btn-sms-submit" onclick="handleSmsLogin()">获取验证码</button>
         </div>
 
         <!-- Token 登录 -->
-        <div id="login-token" style="display:none">
+        <div id="login-token" style="display:none;">
           <div class="form-group">
-            <label>ECS Token</label>
-            <textarea id="inp-token" rows="3" placeholder="粘贴 ecs_token 的值（可在联通 App 抓包或浏览器 Cookie 获取）"></textarea>
+            <input id="inp-token-phone" type="tel" placeholder="手机号（可选，用于界面显示）" maxlength="11" />
           </div>
+
           <div class="form-group">
-            <label>手机号 <span class="label-hint">（可选，仅用于界面展示）</span></label>
-            <input type="tel" id="inp-token-phone" placeholder="请输入手机号" maxlength="11" />
+            <input id="inp-token" type="text" placeholder="请输入 ECS Token" />
           </div>
+
+          <div class="form-group">
+            <button class="btn-primary" style="width:100%;" onclick="handleTokenLogin()">验证并登录</button>
+          </div>
+
           <div id="msg-token" class="msg"></div>
-          <button class="btn-primary w-full" onclick="handleTokenLogin()">验证并登录</button>
-          <div class="token-tip">
-            <b>如何获取 ECS Token：</b>打开浏览器访问 <code>m.client.10010.com</code> 并登录，
-            在开发者工具 → Application → Cookies 中找到 <code>ecs_token</code> 字段复制即可。
-          </div>
         </div>
-
-        <p class="login-note">数据仅用于查询，不存储任何个人信息</p>
       </div>
-    </main>
+    </section>
 
-    <!-- ===== 仪表盘 ===== -->
-    <main id="page-dash" style="display:none" class="page-dash">
-      <div class="container">
+    <!-- 面板页 -->
+    <section id="page-dash" style="display:none;">
 
-        <!-- 顶部汇总卡片 -->
-        <div class="summary-grid">
-          <div class="summary-card">
-            <div class="summary-val" id="s-remain">—</div>
-            <div class="summary-label">剩余流量</div>
-          </div>
-          <div class="summary-card">
-            <div class="summary-val" id="s-used">—</div>
-            <div class="summary-label">已用流量</div>
-          </div>
-          <div class="summary-card">
-            <div class="summary-val" id="s-total">—</div>
-            <div class="summary-label">套餐总量</div>
-          </div>
-          <div class="summary-card accent">
-            <div class="summary-val" id="s-pct">—</div>
-            <div class="summary-label">使用率</div>
-          </div>
+      <!-- 顶部总览统计 -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div id="s-remain" class="stat-value">—</div>
+          <div class="stat-label">剩余流量</div>
         </div>
 
-        <!-- 流量进度 + 分包 -->
-        <div class="card">
-          <div class="card-header">
-            <span class="card-title">流量余量</span>
-            <button class="btn-refresh" id="btn-refresh" onclick="refreshAll()">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-              刷新
-            </button>
-          </div>
-          <div class="big-progress">
-            <div class="big-bar-bg"><div class="big-bar-fill" id="main-bar" style="width:0%"></div></div>
-            <div class="bar-labels">
-              <span id="bar-used-lbl">已用 —</span>
-              <span id="bar-total-lbl">共 —</span>
-            </div>
-          </div>
-          <div id="pkg-list" class="pkg-list">
-            <div class="loading-row"><div class="spinner"></div>加载中...</div>
-          </div>
+        <div class="stat-card">
+          <div id="s-used" class="stat-value">—</div>
+          <div class="stat-label">已用流量</div>
         </div>
 
-        <div class="side-grid">
-          <!-- 速率 & QCI -->
-          <div class="card">
-            <div class="card-header">
-              <span class="card-title">速率 &amp; QCI</span>
-              <span class="net-badge" id="net-badge">—</span>
-            </div>
-            <div id="speed-area">
-              <div class="loading-row"><div class="spinner"></div>查询中...</div>
-            </div>
-          </div>
-
-          <!-- 已订业务 -->
-          <div class="card">
-            <div class="card-header">
-              <span class="card-title">已订业务</span>
-              <span class="count-badge" id="biz-count"></span>
-            </div>
-            <div id="biz-area">
-              <div class="loading-row"><div class="spinner"></div>查询中...</div>
-            </div>
-          </div>
+        <div class="stat-card">
+          <div id="s-total" class="stat-value">—</div>
+          <div class="stat-label">套餐总量</div>
         </div>
 
-        <div class="page-footer">数据来自联通官方接口 · 本地反向代理转发</div>
+        <div class="stat-card active">
+          <div id="s-pct" class="stat-value">0%</div>
+          <div class="stat-label">使用率</div>
+        </div>
       </div>
-    </main>
+
+      <!-- 流量卡片 -->
+      <section class="panel">
+        <div class="panel-head">
+          <div class="panel-title">流量余量</div>
+          <div class="panel-tools">
+            <button id="btn-refresh" class="refresh-btn" onclick="refreshAll()">⟳ 刷新</button>
+          </div>
+        </div>
+
+        <div class="flow-summary">
+          <div class="main-bar-bg">
+            <div id="main-bar"></div>
+          </div>
+          <div class="bar-labels">
+            <span id="bar-used-lbl">已用 —</span>
+            <span id="bar-total-lbl">共 —</span>
+          </div>
+        </div>
+
+        <div id="pkg-list">
+          <div class="loading-row">
+            <div class="spinner"></div>
+            请先登录后查询
+          </div>
+        </div>
+      </section>
+
+      <!-- 下半区 -->
+      <div class="two-col">
+
+        <!-- 速率 -->
+        <section class="panel">
+          <div class="panel-head">
+            <div class="panel-title">速率 & QCI</div>
+            <div class="panel-tools">
+              <span id="net-badge" class="badge">5G</span>
+            </div>
+          </div>
+
+          <div id="speed-area">
+            <div class="loading-row">
+              <div class="spinner"></div>
+              查询中...
+            </div>
+          </div>
+        </section>
+
+        <!-- 已订业务 -->
+        <section class="panel">
+          <div class="panel-head">
+            <div class="panel-title">已订业务</div>
+            <div class="panel-tools">
+              <span id="biz-count" class="badge"></span>
+            </div>
+          </div>
+
+          <div id="biz-area">
+            <div class="loading-row">
+              <div class="spinner"></div>
+              查询中...
+            </div>
+          </div>
+        </section>
+
+      </div>
+
+      <footer class="footer">
+        数据来自联通官方接口 · 本地反向代理转发
+      </footer>
+    </section>
   </div>
-  <script src="app.js"></script>
+
+  <script src="./app.js"></script>
 </body>
 </html>
