@@ -1,5 +1,4 @@
 'use strict';
-
 /* ===== State ===== */
 const S = { phone: '', token: '', smsStep: 'send', countdown: 0, timer: null };
 
@@ -14,7 +13,8 @@ async function api(path, extra = {}) {
     body: JSON.stringify({ mobileNumber: S.phone, ...extra }),
   });
   const data = await res.json();
-  console.log(`[API] ${path}`, JSON.stringify(data).slice(0, 1000));
+  console.log(`[API] ${path}`, JSON.stringify(data).slice(0, 1200));
+  
   if (!res.ok || (data.code && !['0000','200',200,'1000','success','SUCCESS'].includes(data.code))) {
     throw new Error(data.message || data.resultMessage || data.msg || `请求失败 (${res.status})`);
   }
@@ -65,7 +65,6 @@ async function handleSmsLogin() {
   const phone = val('inp-phone');
   if (!/^1[3-9]\d{9}$/.test(phone)) { showMsg('msg-sms', '请输入有效的联通手机号', 'err'); return; }
   S.phone = phone;
-
   if (S.smsStep === 'send') {
     const btn = id('btn-sms-submit');
     btn.disabled = true; btn.textContent = '发送中...';
@@ -80,7 +79,6 @@ async function handleSmsLogin() {
     btn.disabled = false;
     return;
   }
-
   const code = val('inp-code');
   if (!code) { showMsg('msg-sms', '请输入验证码', 'err'); return; }
   const btn = id('btn-sms-submit');
@@ -89,7 +87,7 @@ async function handleSmsLogin() {
     const data = await api('/login-sms', { randomNum: code });
     S.token = data.token || data.ecs_token || data.accessToken
            || data.result?.token || data.result?.ecs_token
-           || data.data?.token   || data.data?.ecs_token || '';
+           || data.data?.token || data.data?.ecs_token || '';
     console.log('[login] token prefix =', S.token ? S.token.slice(0,20)+'...' : '(none)');
     onLoginSuccess();
   } catch (e) {
@@ -157,9 +155,9 @@ function loadAll() { loadFlow(); loadSpeed(); loadBiz(); }
 async function refreshAll() {
   const btn = id('btn-refresh');
   btn.classList.add('spinning');
-  id('pkg-list').innerHTML   = '<div class="loading-row"><div class="spinner"></div>刷新中...</div>';
+  id('pkg-list').innerHTML = '<div class="loading-row"><div class="spinner"></div>刷新中...</div>';
   id('speed-area').innerHTML = '<div class="loading-row"><div class="spinner"></div>查询中...</div>';
-  id('biz-area').innerHTML   = '<div class="loading-row"><div class="spinner"></div>查询中...</div>';
+  id('biz-area').innerHTML = '<div class="loading-row"><div class="spinner"></div>查询中...</div>';
   await Promise.allSettled([loadFlow(), loadSpeed(), loadBiz()]);
   btn.classList.remove('spinning');
 }
@@ -176,47 +174,70 @@ async function loadFlow() {
 }
 
 function renderFlow(data) {
-  const pkgs = findArray(data,
-    'packageList','flowPackageList','pkgList','packages',
-    'list','items','records','flowList');
-
-  console.log('[flow] pkgs count=', pkgs.length, '  first=', pkgs[0]);
+  console.log('[flow] 完整数据结构:', data);
 
   let total = 0, used = 0, left = 0;
-  const list = pkgs.map(p => {
-    const t = parseMB(p.total       || p.packageFlow  || p.flowSize    || p.totalFlow   || p.totalSize  || p.allSize);
-    const u = parseMB(p.usedFlow    || p.used         || p.usedSize    || p.useFlow     || p.usedTraffic|| p.usedAmount);
-    const l = parseMB(p.leftFlow    || p.remainFlow   || p.left        || p.remainSize  || p.surplusFlow|| p.balance) || Math.max(t - u, 0);
-    total += t; used += u; left += l;
+  let pkgs = [];
+
+  // 从 flowSumList / MIResources 提取总用量（你当前接口的主要结构）
+  const sumList = findArray(data, 'flowSumList', 'MIResources', 'resources');
+  if (sumList.length > 0) {
+    sumList.forEach(item => {
+      const canuse = parseMB(dig(item, 'xcanusevalue', 'canusevalue', 'remain', 'left'));
+      const xused  = parseMB(dig(item, 'xusedvalue', 'usedvalue', 'used'));
+      const xsum   = parseMB(dig(item, 'xsumvalue', 'sumvalue', 'total'));
+      if (xsum > 0) {
+        total += xsum;
+        used  += xused;
+        left  += canuse || Math.max(xsum - xused, 0);
+      }
+    });
+  }
+
+  // 流量包列表
+  const pkgArray = findArray(data, 'pkgs', 'packageList', 'flowPackageList', 'pkgList', 'flowList', 'items');
+  pkgs = pkgArray.map(p => {
+    const t = parseMB(dig(p, 'total', 'flowSize', 'totalFlow', 'allSize', 'xsumvalue'));
+    const u = parseMB(dig(p, 'used', 'usedFlow', 'xusedvalue', 'usedAmount'));
+    const l = parseMB(dig(p, 'left', 'remain', 'canusevalue', 'xcanusevalue')) || Math.max(t - u, 0);
     return {
-      name  : p.packageName || p.name || p.productName || p.offerName || p.pkgName || '流量包',
+      name: dig(p, 'packageName', 'name', 'productName', 'offerName', 'pkgName') || '主流量包',
       t, u, l,
-      expire: p.expireDate  || p.endDate || p.expiryDate || p.validDate || p.endTime || '',
+      expire: dig(p, 'expireDate', 'endDate', 'validDate', 'endTime') || ''
     };
   });
 
+  // 如果上面没取到总和，从单个包累加
+  if (total === 0 && pkgs.length > 0) {
+    pkgs.forEach(p => { total += p.t; used += p.u; left += p.l; });
+  }
+
   const pct = total > 0 ? Math.round(used / total * 100) : 0;
+
+  // 更新顶部卡片
   id('s-remain').textContent = fmtGB(left);
   id('s-used').textContent   = fmtGB(used);
   id('s-total').textContent  = fmtGB(total);
   id('s-pct').textContent    = pct + '%';
-  id('bar-used-lbl').textContent  = '已用 ' + fmtGB(used);
-  id('bar-total-lbl').textContent = '共 '   + fmtGB(total);
 
+  // 主进度条
   const bar = id('main-bar');
-  bar.style.width      = Math.min(pct, 100) + '%';
-  bar.style.background = pct > 85 ? '#dc2626' : pct > 60 ? '#d97706' : '#2563eb';
+  if (bar) {
+    bar.style.width = Math.min(pct, 100) + '%';
+    bar.style.background = pct > 85 ? '#dc2626' : pct > 60 ? '#d97706' : '#2563eb';
+  }
 
-  if (!list.length) {
-    id('pkg-list').innerHTML = `<div class="error-tip">
-      接口有响应但未找到流量包数组。<br>
-      <small style="color:var(--text-3)">请 F12 → Console 查看 [API] /flow 原始 JSON，把结构截图反馈给开发者修复字段映射。</small>
-    </div>`;
+  id('bar-used-lbl').textContent = '已用 ' + fmtGB(used);
+  id('bar-total-lbl').textContent = '共 ' + fmtGB(total);
+
+  // 流量包详情列表
+  if (!pkgs.length) {
+    id('pkg-list').innerHTML = `<div class="error-tip">未找到流量包数据</div>`;
     return;
   }
 
-  id('pkg-list').innerHTML = list.map(p => {
-    const pp  = p.t > 0 ? Math.round(p.u / p.t * 100) : 0;
+  id('pkg-list').innerHTML = pkgs.map(p => {
+    const pp = p.t > 0 ? Math.round(p.u / p.t * 100) : 0;
     const cls = pp > 85 ? 'red' : pp > 60 ? 'amber' : 'green';
     const barColor = pp > 85 ? '#dc2626' : pp > 60 ? '#d97706' : '#2563eb';
     return `<div class="pkg-item">
@@ -245,14 +266,23 @@ async function loadSpeed() {
 }
 
 function renderSpeed(data) {
-  const dl  = numOf(dig(data, 'downRate','downloadRate','downSpeed','downloadSpeed','downBandwidth','dlRate'));
-  const ul  = numOf(dig(data, 'upRate','uploadRate','upSpeed','uploadSpeed','upBandwidth','ulRate'));
-  const qci = dig(data, 'qci','QCI','qciLevel','qciValue','qciCode') ?? '—';
-  const net = dig(data, 'networkType','netType','network','accessType','netTypeName') ?? '5G';
-  const limitFlag = ['1','true',true,'yes'].includes(dig(data, 'limitFlag','isLimit','speedLimit','isLimitSpeed','limitStatus'));
-  const limitV    = dig(data, 'limitRate','limitSpeed','limitBandwidth','limitValue') ?? '';
+  console.log('[speed] 原始数据:', data);
+
+  const rateRes = dig(data, 'rateResource', 'flowPercent');
+  let dl = numOf(dig(rateRes || data, 'rate', 'downRate', 'downloadRate', 'flowPercent', 'downSpeed'));
+  let ul = numOf(dig(rateRes || data, 'upRate', 'uploadRate', 'upSpeed', 'ulRate'));
+
+  if (rateRes && typeof rateRes === 'object') {
+    dl = dl || numOf(dig(rateRes, 'down', 'download', 'dl'));
+    ul = ul || numOf(dig(rateRes, 'up', 'upload', 'ul'));
+  }
+
+  const qci = dig(data, 'qci', 'QCI', 'qciLevel') ?? '—';
+  const net = dig(data, 'networkType', 'netType', 'network', 'accessType') ?? '5G';
+  const limitFlag = ['1','true',true].includes(dig(data, 'limitFlag','isLimit','speedLimit'));
 
   id('net-badge').textContent = net;
+
   id('speed-area').innerHTML = `
     <div class="speed-pair">
       <div class="speed-block">
@@ -267,10 +297,9 @@ function renderSpeed(data) {
     <div class="info-rows">
       ${row('QCI 等级', qci)}
       ${row('网络类型', net)}
-      ${row('限速状态', limitFlag
-        ? `<span class="pkg-pct amber">已限速${limitV ? ' ' + limitV + ' Mbps' : ''}</span>`
+      ${row('限速状态', limitFlag 
+        ? '<span class="pkg-pct amber">已限速</span>' 
         : '<span class="pkg-pct green">正常</span>')}
-      ${dig(data,'cellId','cell_id','cellID') ? row('Cell ID', dig(data,'cellId','cell_id','cellID')) : ''}
     </div>`;
 }
 
@@ -285,18 +314,21 @@ async function loadBiz() {
 }
 
 function renderBiz(data) {
-  const list = findArray(data, 'list','orderList','serviceList','bizList','items','records','productList');
-  console.log('[biz] items count=', list.length, '  first=', list[0]);
+  console.log('[biz] 原始数据:', data);
 
-  id('biz-count').textContent = list.length ? list.length + ' 项' : '';
+  const list = findArray(data, 'data', 'list', 'orderList', 'items', 'productList', 'records');
+  
+  id('biz-count').textContent = list.length ? list.length + ' 项' : '1 项';
+
   if (!list.length) {
     id('biz-area').innerHTML = '<div class="empty-tip">暂无已订业务</div>';
     return;
   }
+
   id('biz-area').innerHTML = list.map(b => {
-    const price = b.price || b.fee || b.month_fee || b.monthFee || b.chargeFee || b.cost || b.amount || '';
-    const name  = b.serviceName || b.name || b.productName || b.offerName || b.bizName || b.spName || '业务';
-    const date  = b.subscribeDate || b.createDate || b.orderDate || b.startDate || b.orderTime || '';
+    const name = dig(b, 'productName', 'serviceName', 'name', 'offerName', 'bizName') || '业务';
+    const date = dig(b, 'startDate', 'orderTime', 'subscribeDate', 'createDate') || '';
+    const price = dig(b, 'productFee', 'fee', 'price', 'monthFee') || '';
     return `<div class="biz-item">
       <div>
         <div class="biz-name">${esc(name)}</div>
@@ -308,7 +340,7 @@ function renderBiz(data) {
 }
 
 /* ===== Helpers ===== */
-const id  = i => document.getElementById(i);
+const id = i => document.getElementById(i);
 const val = i => id(i).value.trim();
 const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 const row = (k, v) => `<div class="info-row"><span class="info-key">${k}</span><span class="info-val">${v}</span></div>`;
@@ -323,9 +355,8 @@ function parseMB(v) {
   if (s.endsWith('TB') || s.endsWith('T')) return n * 1024 * 1024;
   if (s.endsWith('GB') || s.endsWith('G')) return n * 1024;
   if (s.endsWith('KB') || s.endsWith('K')) return n / 1024;
-  // 如果数字很小（< 2000），可能是 GB 单位
   if (n < 2000 && !s.endsWith('MB') && !s.endsWith('M')) return n * 1024;
-  return n; // 默认 MB
+  return n;
 }
 
 function fmtGB(mb) {
