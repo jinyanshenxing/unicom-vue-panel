@@ -1,0 +1,25 @@
+{
+    "name": "unicom-vue-panel-final",
+    "version": "1.0.0",
+    "private": true,
+    "type": "module",
+    "scripts": {
+      "dev": "concurrently \"node server.js\" \"vite\"",
+      "client": "vite",
+      "server": "node server.js",
+      "build": "vite build",
+      "preview": "vite preview"
+    },
+    "dependencies": {
+      "axios": "^1.7.2",
+      "cors": "^2.8.5",
+      "dotenv": "^16.4.5",
+      "express": "^4.19.2",
+      "vue": "^3.4.29"
+    },
+    "devDependencies": {
+      "@vitejs/plugin-vue": "^5.0.5",
+      "concurrently": "^8.2.2",
+      "vite": "^5.3.1"
+    }
+  }
