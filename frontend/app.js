@@ -24,7 +24,26 @@ async function api(path, extra = {}) {
   return data;
 }
 
-/* ===== Deep search helpers ===== */
+/* ===== Helpers ===== */
+const id = i => document.getElementById(i);
+const val = i => id(i).value.trim();
+
+const esc = s => String(s)
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;');
+
+const row = (k, v) => `<div class="info-row"><span class="info-key">${k}</span><span class="info-val">${v}</span></div>`;
+
+const numOf = v => (v !== undefined && v !== null && v !== '') ? (parseFloat(v) || 0) : 0;
+
+function firstNonEmpty(...vals) {
+  for (const v of vals) {
+    if (v !== undefined && v !== null && v !== '') return v;
+  }
+  return undefined;
+}
+
 function dig(obj, ...keys) {
   if (!obj || typeof obj !== 'object') return undefined;
 
@@ -46,7 +65,7 @@ function findArray(obj, ...preferKeys) {
   if (!obj || typeof obj !== 'object') return [];
 
   for (const k of preferKeys) {
-    if (Array.isArray(obj[k]) && obj[k].length && typeof obj[k][0] === 'object') return obj[k];
+    if (Array.isArray(obj[k]) && typeof obj[k][0] === 'object') return obj[k];
   }
 
   for (const [, v] of Object.entries(obj)) {
@@ -63,11 +82,50 @@ function findArray(obj, ...preferKeys) {
   return [];
 }
 
-function firstNonEmpty(...vals) {
-  for (const v of vals) {
-    if (v !== undefined && v !== null && v !== '') return v;
-  }
-  return undefined;
+function parseMB(v) {
+  if (v === undefined || v === null || v === '') return 0;
+  if (typeof v === 'number') return v;
+
+  const s = String(v).trim().toUpperCase().replace(/,/g, '');
+  const n = parseFloat(s);
+  if (isNaN(n)) return 0;
+
+  if (s.endsWith('TB') || s.endsWith('T')) return n * 1024 * 1024;
+  if (s.endsWith('GB') || s.endsWith('G')) return n * 1024;
+  if (s.endsWith('KB') || s.endsWith('K')) return n / 1024;
+  return n; // 默认 MB
+}
+
+function fmtFlow(mb) {
+  if (mb === undefined || mb === null || isNaN(mb)) return '—';
+  if (mb >= 1024 * 1024) return (mb / 1024 / 1024).toFixed(2) + ' TB';
+  if (mb >= 1024) return (mb / 1024).toFixed(2) + ' GB';
+  return mb.toFixed(2).replace(/\.00$/, '') + ' MB';
+}
+
+function show(elId, visible) {
+  const el = id(elId);
+  if (el) el.style.display = visible ? '' : 'none';
+}
+
+function showMsg(elId, text, type) {
+  const el = id(elId);
+  if (!el) return;
+
+  el.textContent = text;
+  el.className = 'msg show ' + type;
+
+  clearTimeout(el._t);
+  el._t = setTimeout(() => {
+    el.textContent = '';
+    el.className = 'msg';
+  }, 5000);
+}
+
+function extractPriceFromName(name) {
+  const s = String(name || '');
+  const m = s.match(/(\d+(?:\.\d+)?)元/);
+  return m ? m[1] : '';
 }
 
 /* ===== Login ===== */
@@ -253,36 +311,73 @@ function renderFlow(data) {
   const xsbList = Array.isArray(data.XsBResources) ? data.XsBResources : [];
   const details = Array.isArray(data.details) ? data.details : [];
 
-  let pkgs = [];
+  console.log('[flow] sumList=', sumList, ' xsbList=', xsbList, ' details=', details);
 
-  if (details.length) {
-    pkgs = details;
-  } else if (xsbList.length) {
-    pkgs = xsbList;
-  } else if (sumList.length) {
-    pkgs = sumList;
+  let summary = null;
+  if (sumList.length) {
+    summary = sumList[0];
   } else {
-    pkgs = findArray(
-      data,
-      'flowSumList',
-      'XsBResources',
-      'details',
-      'packageList',
-      'flowPackageList',
-      'pkgList',
-      'packages',
-      'list',
-      'items',
-      'records',
-      'flowList'
-    );
+    summary = data;
   }
 
-  console.log('[flow] pkgs count=', pkgs.length, ' first=', pkgs[0]);
+  let left = parseMB(firstNonEmpty(
+    summary?.xcanusevalue,
+    summary?.canusevalue,
+    summary?.leftFlow,
+    summary?.remainFlow,
+    summary?.left,
+    summary?.remainSize,
+    summary?.surplusFlow,
+    summary?.balance
+  ));
 
-  let total = 0, used = 0, left = 0;
+  let used = parseMB(firstNonEmpty(
+    summary?.xusedvalue,
+    summary?.usedFlow,
+    summary?.used,
+    summary?.usedSize,
+    summary?.useFlow,
+    summary?.usedTraffic,
+    summary?.usedAmount
+  ));
 
-  const list = pkgs.map((p, idx) => {
+  let total = parseMB(firstNonEmpty(
+    summary?.xtotalvalue,
+    summary?.total,
+    summary?.packageFlow,
+    summary?.flowSize,
+    summary?.totalFlow,
+    summary?.totalSize,
+    summary?.allSize
+  ));
+
+  if (!total && (left || used)) total = left + used;
+  if (!left && total && used) left = Math.max(total - used, 0);
+
+  const pct = total > 0 ? Math.round((used / total) * 100) : 0;
+
+  id('s-remain').textContent = fmtFlow(left);
+  id('s-used').textContent = fmtFlow(used);
+  id('s-total').textContent = fmtFlow(total);
+  id('s-pct').textContent = pct + '%';
+
+  id('bar-used-lbl').textContent = '已用 ' + fmtFlow(used);
+  id('bar-total-lbl').textContent = '共 ' + fmtFlow(total);
+
+  const bar = id('main-bar');
+  bar.style.width = Math.min(pct, 100) + '%';
+  bar.style.background = pct > 85 ? '#ef4444' : pct > 60 ? '#f59e0b' : '#2563eb';
+
+  let pkgSource = [];
+  if (details.length) {
+    pkgSource = details;
+  } else if (xsbList.length) {
+    pkgSource = xsbList;
+  } else if (sumList.length) {
+    pkgSource = sumList;
+  }
+
+  const list = pkgSource.map((p, idx) => {
     let l = parseMB(firstNonEmpty(
       p.xcanusevalue,
       p.canusevalue,
@@ -317,14 +412,9 @@ function renderFlow(data) {
     if (!t && (l || u)) t = l + u;
     if (!l && t && u) l = Math.max(t - u, 0);
 
-    total += t;
-    used += u;
-    left += l;
-
-    const defaultName =
-      pkgs === sumList ? '流量包' :
-      pkgs === xsbList ? '专属流量' :
-      '流量包';
+    const pp = t > 0 ? Math.round((u / t) * 100) : 0;
+    const cls = pp > 85 ? 'red' : pp > 60 ? 'amber' : 'green';
+    const barColor = pp > 85 ? '#ef4444' : pp > 60 ? '#f59e0b' : '#2563eb';
 
     return {
       name: firstNonEmpty(
@@ -334,84 +424,57 @@ function renderFlow(data) {
         p.productName,
         p.offerName,
         p.pkgName,
-        defaultName
-      ) || `流量包${idx + 1}`,
-      t,
-      u,
-      l,
+        idx === 0 ? '通用流量' : '专属流量'
+      ),
+      l, u, t, pp, cls, barColor,
       expire: firstNonEmpty(
         p.expireDate,
         p.endDate,
         p.expiryDate,
         p.validDate,
         p.endTime
-      ) || '',
+      ) || ''
     };
   });
 
-  if ((!total && !used && !left) && sumList.length) {
-    const s = sumList[0];
-    left = parseMB(s.xcanusevalue);
-    used = parseMB(s.xusedvalue);
-    total = left + used;
-  }
-
-  const pct = total > 0 ? Math.round(used / total * 100) : 0;
-
-  id('s-remain').textContent = fmtGB(left);
-  id('s-used').textContent = fmtGB(used);
-  id('s-total').textContent = fmtGB(total);
-  id('s-pct').textContent = pct + '%';
-
-  id('bar-used-lbl').textContent = '已用 ' + fmtGB(used);
-  id('bar-total-lbl').textContent = '共 ' + fmtGB(total);
-
-  const bar = id('main-bar');
-  bar.style.width = Math.min(pct, 100) + '%';
-  bar.style.background = pct > 85 ? '#dc2626' : pct > 60 ? '#d97706' : '#2563eb';
-
   if (!list.length && total > 0) {
-    id('pkg-list').innerHTML = `<div class="pkg-item">
-      <div class="pkg-left">
-        <div class="pkg-name">流量包</div>
-        <div class="pkg-expire">&nbsp;</div>
-        <div class="mini-bar-bg"><div class="mini-bar" style="width:${Math.min(pct, 100)}%;background:${pct > 85 ? '#dc2626' : pct > 60 ? '#d97706' : '#2563eb'}"></div></div>
-      </div>
-      <div class="pkg-right">
-        <div class="pkg-remain">${fmtGB(left)}</div>
-        <div class="pkg-of">/ ${fmtGB(total)}</div>
-        <span class="pkg-pct ${pct > 85 ? 'red' : pct > 60 ? 'amber' : 'green'}">已用 ${pct}%</span>
+    id('pkg-list').innerHTML = `<div class="pkg-item enhanced">
+      <div class="pkg-main">
+        <div class="pkg-title-row">
+          <div class="pkg-name">套餐流量</div>
+          <span class="pkg-pct ${pct > 85 ? 'red' : pct > 60 ? 'amber' : 'green'}">已用 ${pct}%</span>
+        </div>
+        <div class="mini-bar-bg"><div class="mini-bar" style="width:${Math.min(pct, 100)}%;background:${pct > 85 ? '#ef4444' : pct > 60 ? '#f59e0b' : '#2563eb'}"></div></div>
+        <div class="pkg-meta">
+          <span>剩余 ${fmtFlow(left)}</span>
+          <span>总量 ${fmtFlow(total)}</span>
+        </div>
       </div>
     </div>`;
     return;
   }
 
   if (!list.length) {
-    id('pkg-list').innerHTML = `<div class="error-tip">
-      接口有响应但未找到可识别的流量数据。<br>
-      <small style="color:var(--text-3)">请 F12 → Console 查看 [API] /flow 原始 JSON。</small>
-    </div>`;
+    id('pkg-list').innerHTML = '<div class="empty-tip">暂无流量包信息</div>';
     return;
   }
 
-  id('pkg-list').innerHTML = list.map(p => {
-    const pp = p.t > 0 ? Math.round(p.u / p.t * 100) : 0;
-    const cls = pp > 85 ? 'red' : pp > 60 ? 'amber' : 'green';
-    const barColor = pp > 85 ? '#dc2626' : pp > 60 ? '#d97706' : '#2563eb';
-
-    return `<div class="pkg-item">
-      <div class="pkg-left">
-        <div class="pkg-name">${esc(p.name)}</div>
-        ${p.expire ? `<div class="pkg-expire">到期 ${esc(p.expire)}</div>` : '<div class="pkg-expire">&nbsp;</div>'}
-        <div class="mini-bar-bg"><div class="mini-bar" style="width:${Math.min(pp, 100)}%;background:${barColor}"></div></div>
+  id('pkg-list').innerHTML = list.map(p => `
+    <div class="pkg-item enhanced">
+      <div class="pkg-main">
+        <div class="pkg-title-row">
+          <div class="pkg-name">${esc(p.name)}</div>
+          <span class="pkg-pct ${p.cls}">已用 ${p.pp}%</span>
+        </div>
+        ${p.expire ? `<div class="pkg-expire">到期时间：${esc(p.expire)}</div>` : '<div class="pkg-expire">&nbsp;</div>'}
+        <div class="mini-bar-bg"><div class="mini-bar" style="width:${Math.min(p.pp, 100)}%;background:${p.barColor}"></div></div>
+        <div class="pkg-meta">
+          <span>剩余 ${fmtFlow(p.l)}</span>
+          <span>总量 ${fmtFlow(p.t)}</span>
+        </div>
       </div>
-      <div class="pkg-right">
-        <div class="pkg-remain">${fmtGB(p.l)}</div>
-        <div class="pkg-of">/ ${fmtGB(p.t)}</div>
-        <span class="pkg-pct ${cls}">已用 ${pp}%</span>
-      </div>
-    </div>`;
-  }).join('');
+    </div>
+  `).join('');
 }
 
 /* ── Speed ── */
@@ -456,31 +519,32 @@ function renderSpeed(data) {
   );
 
   const limitFlag = ['0', 0, 'true', true, 'yes', 'limited', 'LIMITED'].includes(state);
-  const limitV = firstNonEmpty(
-    dig(data, 'limitRate', 'limitSpeed', 'limitBandwidth', 'limitValue'),
-    ''
-  );
 
   id('net-badge').textContent = net;
 
   id('speed-area').innerHTML = `
     <div class="speed-pair">
-      <div class="speed-block">
+      <div class="speed-block modern">
         <div class="speed-icon dl">↓</div>
-        <div><div class="speed-val">${dl || '—'}</div><div class="speed-unit">Mbps 下行</div></div>
+        <div>
+          <div class="speed-val">${dl || '—'}</div>
+          <div class="speed-unit">Mbps 下行</div>
+        </div>
       </div>
-      <div class="speed-block">
+      <div class="speed-block modern">
         <div class="speed-icon ul">↑</div>
-        <div><div class="speed-val">${ul || '—'}</div><div class="speed-unit">Mbps 上行</div></div>
+        <div>
+          <div class="speed-val">${ul || '—'}</div>
+          <div class="speed-unit">Mbps 上行</div>
+        </div>
       </div>
     </div>
     <div class="info-rows">
       ${row('QCI 等级', esc(String(qci)))}
       ${row('网络类型', esc(String(net)))}
       ${row('限速状态', limitFlag
-        ? `<span class="pkg-pct amber">已限速${limitV ? ' ' + esc(String(limitV)) + ' Mbps' : ''}</span>`
+        ? '<span class="pkg-pct amber">已限速</span>'
         : '<span class="pkg-pct green">正常</span>')}
-      ${dig(data, 'cellId', 'cell_id', 'cellID') ? row('Cell ID', esc(String(dig(data, 'cellId', 'cell_id', 'cellID')))) : ''}
     </div>`;
 }
 
@@ -495,19 +559,28 @@ async function loadBiz() {
 }
 
 function renderBiz(data) {
-  const list = findArray(
-    data,
-    'mainProductInfo',
-    'list',
-    'orderList',
-    'serviceList',
-    'bizList',
-    'items',
-    'records',
-    'productList'
-  );
+  let list = [];
+
+  if (Array.isArray(data?.mainProductInfo)) {
+    list = data.mainProductInfo;
+  } else if (Array.isArray(data?.data?.mainProductInfo)) {
+    list = data.data.mainProductInfo;
+  } else {
+    list = findArray(
+      data,
+      'mainProductInfo',
+      'list',
+      'orderList',
+      'serviceList',
+      'bizList',
+      'items',
+      'records',
+      'productList'
+    );
+  }
 
   console.log('[biz] items count=', list.length, ' first=', list[0]);
+
   id('biz-count').textContent = list.length ? list.length + ' 项' : '';
 
   if (!list.length) {
@@ -515,18 +588,7 @@ function renderBiz(data) {
     return;
   }
 
-  id('biz-area').innerHTML = list.map(b => {
-    const price = firstNonEmpty(
-      b.price,
-      b.fee,
-      b.month_fee,
-      b.monthFee,
-      b.chargeFee,
-      b.cost,
-      b.amount,
-      b.productFee
-    ) || '';
-
+  id('biz-area').innerHTML = list.map((b, idx) => {
     const name = firstNonEmpty(
       b.serviceName,
       b.name,
@@ -543,69 +605,46 @@ function renderBiz(data) {
       b.orderDate,
       b.startDate,
       b.orderTime,
+      b.orderTimeStr,
       ''
     );
 
-    return `<div class="biz-item">
-      <div>
-        <div class="biz-name">${esc(String(name))}</div>
-        ${date ? `<div class="biz-date">${esc(String(date))}</div>` : ''}
+    let price = firstNonEmpty(
+      b.price,
+      b.fee,
+      b.month_fee,
+      b.monthFee,
+      b.chargeFee,
+      b.cost,
+      b.amount,
+      b.productFee
+    );
+
+    if (!price) {
+      price = extractPriceFromName(name);
+    }
+
+    const statusText =
+      b.orderStatus === '0' ? '生效中' :
+      b.orderStatus === '1' ? '处理中' :
+      '已订购';
+
+    return `
+      <div class="biz-card">
+        <div class="biz-card-left">
+          <div class="biz-dot ${idx % 2 === 0 ? 'blue' : 'green'}"></div>
+          <div class="biz-content">
+            <div class="biz-name">${esc(String(name))}</div>
+            <div class="biz-sub">
+              ${date ? `<span>${esc(String(date))}</span>` : '<span>已订购业务</span>'}
+              <span class="biz-status">${statusText}</span>
+            </div>
+          </div>
+        </div>
+        <div class="biz-card-right">
+          <span class="biz-tag">${price ? `¥${esc(String(price))}/月` : '套餐'}</span>
+        </div>
       </div>
-      <div class="biz-price">${price ? '¥' + esc(String(price)) + '/月' : '免费'}</div>
-    </div>`;
+    `;
   }).join('');
-}
-
-/* ===== Helpers ===== */
-const id = i => document.getElementById(i);
-const val = i => id(i).value.trim();
-
-const esc = s => String(s)
-  .replace(/&/g, '&amp;')
-  .replace(/</g, '&lt;')
-  .replace(/>/g, '&gt;');
-
-const row = (k, v) => `<div class="info-row"><span class="info-key">${k}</span><span class="info-val">${v}</span></div>`;
-
-const numOf = v => (v !== undefined && v !== null && v !== '') ? (parseFloat(v) || 0) : 0;
-
-function parseMB(v) {
-  if (v === undefined || v === null || v === '') return 0;
-  if (typeof v === 'number') return v;
-
-  const s = String(v).trim().toUpperCase().replace(/,/g, '');
-  const n = parseFloat(s);
-  if (isNaN(n)) return 0;
-
-  if (s.endsWith('TB') || s.endsWith('T')) return n * 1024 * 1024;
-  if (s.endsWith('GB') || s.endsWith('G')) return n * 1024;
-  if (s.endsWith('KB') || s.endsWith('K')) return n / 1024;
-
-  return n; // 默认 MB
-}
-
-function fmtGB(mb) {
-  if (mb === undefined || mb === null || isNaN(mb)) return '—';
-  if (mb >= 1024 * 1024) return (mb / 1024 / 1024).toFixed(2) + ' TB';
-  if (mb >= 1024) return (mb / 1024).toFixed(2) + ' GB';
-  return mb.toFixed(0) + ' MB';
-}
-
-function show(elId, visible) {
-  const el = id(elId);
-  if (el) el.style.display = visible ? '' : 'none';
-}
-
-function showMsg(elId, text, type) {
-  const el = id(elId);
-  if (!el) return;
-
-  el.textContent = text;
-  el.className = 'msg show ' + type;
-
-  clearTimeout(el._t);
-  el._t = setTimeout(() => {
-    el.textContent = '';
-    el.className = 'msg';
-  }, 5000);
 }

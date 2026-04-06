@@ -174,3 +174,192 @@ textarea{resize:vertical}
   .side-grid{grid-template-columns:1fr}
   .summary-val{font-size:18px}
 }
+
+/* ===== 卡片整体更柔和 ===== */
+.card, .panel, .box {
+  border-radius: 20px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+/* ===== 顶部统计卡 ===== */
+.stat-card {
+  transition: all .2s ease;
+}
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(37, 99, 235, 0.08);
+}
+
+/* ===== 流量包卡片优化 ===== */
+.pkg-item.enhanced {
+  padding: 18px 0;
+  border-bottom: 1px solid #eef2f7;
+}
+.pkg-item.enhanced:last-child {
+  border-bottom: none;
+}
+.pkg-main {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.pkg-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.pkg-name {
+  font-size: 18px;
+  font-weight: 700;
+  color: #111827;
+}
+.pkg-expire {
+  font-size: 13px;
+  color: #94a3b8;
+}
+.pkg-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #64748b;
+  font-size: 14px;
+}
+.mini-bar-bg {
+  width: 100%;
+  height: 8px;
+  background: #edf2f7;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.mini-bar {
+  height: 100%;
+  border-radius: 999px;
+  transition: width .35s ease;
+}
+
+/* ===== 速率卡更现代 ===== */
+.speed-block.modern {
+  border-radius: 16px;
+  background: linear-gradient(180deg, #f8fafc, #eef2ff);
+  border: 1px solid #e5e7eb;
+  transition: all .2s ease;
+}
+.speed-block.modern:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(59, 130, 246, 0.08);
+}
+.speed-val {
+  font-size: 36px;
+  font-weight: 800;
+  line-height: 1;
+  color: #0f172a;
+}
+.speed-unit {
+  margin-top: 8px;
+  color: #64748b;
+  font-size: 14px;
+}
+
+/* ===== 已订业务卡片 ===== */
+.biz-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 0;
+  border-bottom: 1px solid #eef2f7;
+}
+.biz-card:last-child {
+  border-bottom: none;
+}
+.biz-card-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+.biz-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  margin-top: 8px;
+  flex-shrink: 0;
+}
+.biz-dot.blue {
+  background: #3b82f6;
+  box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.10);
+}
+.biz-dot.green {
+  background: #10b981;
+  box-shadow: 0 0 0 6px rgba(16, 185, 129, 0.10);
+}
+.biz-content {
+  min-width: 0;
+}
+.biz-name {
+  font-size: 18px;
+  font-weight: 700;
+  color: #111827;
+  line-height: 1.4;
+}
+.biz-sub {
+  margin-top: 6px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: #94a3b8;
+}
+.biz-status {
+  color: #059669;
+  font-weight: 600;
+}
+.biz-card-right {
+  flex-shrink: 0;
+}
+.biz-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #2563eb;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+/* ===== 空态/错误态 ===== */
+.empty-tip,
+.error-tip {
+  padding: 20px;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 14px;
+}
+.error-tip {
+  color: #ef4444;
+}
+
+/* ===== 响应式 ===== */
+@media (max-width: 768px) {
+  .pkg-title-row,
+  .pkg-meta,
+  .biz-card {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .biz-card-right {
+    width: 100%;
+  }
+
+  .biz-tag {
+    width: fit-content;
+  }
+
+  .speed-val {
+    font-size: 28px;
+  }
+}
