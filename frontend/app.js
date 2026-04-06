@@ -6,7 +6,8 @@ const S = {
   token: '',
   smsStep: 'send',
   countdown: 0,
-  timer: null
+  timer: null,
+  bizList: []
 };
 
 /* ===== API ===== */
@@ -88,6 +89,15 @@ function findArray(obj, ...preferKeys) {
   return [];
 }
 
+function uniqBy(arr, getKey) {
+  const m = new Map();
+  arr.forEach(item => {
+    const key = getKey(item);
+    if (!m.has(key)) m.set(key, item);
+  });
+  return [...m.values()];
+}
+
 function parseMB(v) {
   if (v === undefined || v === null || v === '') return 0;
   if (typeof v === 'number') return v;
@@ -115,6 +125,13 @@ function fmtNumber(v) {
   return Number.isFinite(n) ? String(n) : String(v);
 }
 
+function colorByPercent(percent) {
+  if (percent >= 100) return '#111827';
+  if (percent > 85) return '#ef4444';
+  if (percent > 60) return '#f59e0b';
+  return '#2563eb';
+}
+
 function show(elId, visible) {
   const el = id(elId);
   if (el) el.style.display = visible ? '' : 'none';
@@ -140,24 +157,67 @@ function extractPriceFromName(name) {
   return m ? m[1] : '';
 }
 
-function colorByPercent(percent) {
-  if (percent >= 100) return '#111827';
-  if (percent > 85) return '#ef4444';
-  if (percent > 60) return '#f59e0b';
-  return '#2563eb';
+function pickBizList(data) {
+  if (Array.isArray(data?.mainProductInfo)) return data.mainProductInfo;
+  if (Array.isArray(data?.data?.mainProductInfo)) return data.data.mainProductInfo;
+  return findArray(
+    data,
+    'mainProductInfo',
+    'list',
+    'orderList',
+    'serviceList',
+    'bizList',
+    'items',
+    'records',
+    'productList'
+  );
 }
 
-function uniqBy(arr, getKey) {
-  const m = new Map();
-  arr.forEach(item => {
-    const key = getKey(item);
-    if (!m.has(key)) m.set(key, item);
+/* ===== Flow Package Parsing ===== */
+function collectFlowPackages(obj, arr = []) {
+  if (!obj || typeof obj !== 'object') return arr;
+
+  const candidateArrays = [
+    'flowSumList',
+    'XsBResources',
+    'details',
+    'resources',
+    'list',
+    'items'
+  ];
+
+  for (const key of candidateArrays) {
+    if (Array.isArray(obj[key])) {
+      obj[key].forEach((item, idx) => {
+        if (item && typeof item === 'object') {
+          arr.push({
+            ...item,
+            __source: key,
+            __index: idx
+          });
+
+          collectFlowPackages(item, arr);
+        }
+      });
+    }
+  }
+
+  return arr;
+}
+
+function matchBizName(flowName) {
+  if (!S.bizList || !S.bizList.length) return '';
+
+  const direct = S.bizList.find(b => {
+    const name = firstNonEmpty(b.productName, b.name, b.serviceName, b.offerName, '');
+    return name && flowName && (flowName.includes(name) || name.includes(flowName));
   });
-  return [...m.values()];
+  if (direct) return firstNonEmpty(direct.productName, direct.name, direct.serviceName, direct.offerName, '');
+
+  return '';
 }
 
-/* ===== Flow Helpers ===== */
-function normalizeFlowItem(p, idx = 0, source = '') {
+function normalizeUnicomFlowItem(p, idx = 0) {
   let left = parseMB(firstNonEmpty(
     p.xcanusevalue,
     p.canusevalue,
@@ -192,23 +252,32 @@ function normalizeFlowItem(p, idx = 0, source = '') {
   if (!total && (left || used)) total = left + used;
   if (!left && total && used) left = Math.max(total - used, 0);
 
-  const name = firstNonEmpty(
+  let name = firstNonEmpty(
     p.feePolicyName,
+    p.feePolicyTypeName,
     p.packageName,
     p.name,
     p.productName,
     p.offerName,
     p.pkgName,
-    source === 'sum' ? `套餐流量${idx ? idx + 1 : ''}` :
-    source === 'xsb' ? `专属流量${idx ? idx + 1 : ''}` :
-    `流量包${idx + 1}`
+    p.resourceName,
+    p.policyName
   );
 
-  const unlimited = /无限|不限量/.test(String(name || ''));
-  const voice = /语音|分钟|通话/.test(String(name || ''));
-  const exclusive = source === 'xsb' || /专属|定向|免流|头条|腾讯|阿里|百度|抖音|快手|爱奇艺|优酷/.test(String(name || ''));
+  if (!name) {
+    if (p.__source === 'flowSumList') name = idx === 0 ? '套餐总流量' : `套餐流量${idx + 1}`;
+    else if (p.__source === 'XsBResources') name = `专属流量包${idx + 1}`;
+    else if (p.__source === 'details') name = `流量包${idx + 1}`;
+    else name = `流量包${idx + 1}`;
+  }
+
+  const bizMatchedName = matchBizName(name);
+  if (!/总流量|专属流量包|流量包\d+/.test(name) && bizMatchedName) {
+    name = bizMatchedName;
+  }
 
   const percent = total > 0 ? Math.round((used / total) * 10000) / 100 : 0;
+  const textName = String(name || '');
 
   return {
     name,
@@ -216,11 +285,11 @@ function normalizeFlowItem(p, idx = 0, source = '') {
     left,
     total,
     percent,
-    unlimited,
-    exclusive,
-    voice,
-    shared: !exclusive,
-    source,
+    source: p.__source || '',
+    unlimited: /无限|不限量/.test(textName),
+    exclusive: /专属|定向|免流|头条|腾讯|百度|抖音|快手|爱奇艺|优酷/.test(textName) || p.__source === 'XsBResources',
+    voice: /语音|分钟|通话/.test(textName),
+    shared: !(/专属|定向|免流/.test(textName) || p.__source === 'XsBResources'),
     raw: p
   };
 }
@@ -306,22 +375,24 @@ async function handleSmsLogin() {
 
   if (S.smsStep === 'send') {
     const btn = id('btn-sms-submit');
-    btn.disabled = true;
-    btn.textContent = '发送中...';
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = '发送中...';
+    }
 
     try {
       await api('/send-sms');
       showMsg('msg-sms', '验证码已发送，请注意查收', 'ok');
       show('sms-code-group', true);
-      btn.textContent = '登 录';
+      if (btn) btn.textContent = '登 录';
       S.smsStep = 'verify';
       startCountdown();
     } catch (e) {
       showMsg('msg-sms', e.message, 'err');
-      btn.textContent = '获取验证码';
+      if (btn) btn.textContent = '获取验证码';
     }
 
-    btn.disabled = false;
+    if (btn) btn.disabled = false;
     return;
   }
 
@@ -332,8 +403,10 @@ async function handleSmsLogin() {
   }
 
   const btn = id('btn-sms-submit');
-  btn.disabled = true;
-  btn.textContent = '登录中...';
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '登录中...';
+  }
 
   try {
     const data = await api('/login-sms', { randomNum: code });
@@ -351,8 +424,10 @@ async function handleSmsLogin() {
     onLoginSuccess();
   } catch (e) {
     showMsg('msg-sms', e.message, 'err');
-    btn.disabled = false;
-    btn.textContent = '登 录';
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '登 录';
+    }
   }
 }
 window.handleSmsLogin = handleSmsLogin;
@@ -432,7 +507,7 @@ function onLoginSuccess() {
 }
 
 function logout() {
-  Object.assign(S, { phone: '', token: '', smsStep: 'send', countdown: 0 });
+  Object.assign(S, { phone: '', token: '', smsStep: 'send', countdown: 0, bizList: [] });
   clearInterval(S.timer);
 
   show('page-login', true);
@@ -449,9 +524,8 @@ window.logout = logout;
 
 /* ===== Data ===== */
 function loadAll() {
-  loadFlow();
-  loadSpeed();
-  loadBiz();
+  // 先加载业务，便于给流量包辅助命名
+  Promise.allSettled([loadBiz(true), loadFlow(), loadSpeed()]).then(() => {});
 }
 window.loadAll = loadAll;
 
@@ -463,7 +537,7 @@ async function refreshAll() {
   if (id('speed-area')) id('speed-area').innerHTML = '<div class="loading-row"><div class="spinner"></div>查询中...</div>';
   if (id('biz-area')) id('biz-area').innerHTML = '<div class="loading-row"><div class="spinner"></div>查询中...</div>';
 
-  await Promise.allSettled([loadFlow(), loadSpeed(), loadBiz()]);
+  await Promise.allSettled([loadBiz(true), loadFlow(), loadSpeed()]);
 
   if (btn) btn.classList.remove('spinning');
 }
@@ -484,11 +558,6 @@ async function loadFlow() {
 
 function renderFlow(data) {
   const sumList = Array.isArray(data?.flowSumList) ? data.flowSumList : [];
-  const xsbList = Array.isArray(data?.XsBResources) ? data.XsBResources : [];
-  const details = Array.isArray(data?.details) ? data.details : [];
-
-  console.log('[flow] sumList=', sumList, ' xsbList=', xsbList, ' details=', details);
-
   const summary = sumList[0] || {};
 
   let totalLeft = parseMB(summary.xcanusevalue);
@@ -496,6 +565,7 @@ function renderFlow(data) {
   let totalFlow = parseMB(summary.xtotalvalue);
 
   if (!totalFlow && (totalLeft || totalUsed)) totalFlow = totalLeft + totalUsed;
+
   const totalPct = totalFlow > 0 ? Math.round((totalUsed / totalFlow) * 100) : 0;
 
   if (id('s-remain')) id('s-remain').textContent = fmtFlow(totalLeft);
@@ -512,15 +582,41 @@ function renderFlow(data) {
     bar.style.background = colorByPercent(totalPct);
   }
 
-  const sumCards = sumList.map((item, idx) => normalizeFlowItem(item, idx, 'sum'));
-  const xsbCards = xsbList.map((item, idx) => normalizeFlowItem(item, idx, 'xsb'));
-  const detailCards = details.map((item, idx) => normalizeFlowItem(item, idx, 'detail'));
+  // 收集所有流量包
+  const rawItems = collectFlowPackages(data);
+  console.log('[flow] raw package count=', rawItems.length, rawItems);
 
-  let cards = uniqBy(
-    [...sumCards, ...xsbCards, ...detailCards],
-    item => `${item.name}_${item.total}_${item.used}_${item.left}`
-  );
+  let cards = rawItems
+    .map((item, idx) => normalizeUnicomFlowItem(item, idx))
+    .filter(item => item.name && (item.total > 0 || item.used > 0 || item.left > 0));
 
+  cards = uniqBy(cards, item => `${item.name}_${item.total}_${item.used}_${item.left}`);
+
+  // 过滤和 summary 完全重复但无区分意义的项
+  if (cards.length > 1) {
+    cards = cards.filter(item => {
+      const same =
+        Math.abs(item.left - totalLeft) < 0.01 &&
+        Math.abs(item.used - totalUsed) < 0.01 &&
+        Math.abs(item.total - totalFlow) < 0.01;
+
+      if (!same) return true;
+      return /总|主套餐|套餐总流量|总流量/.test(item.name);
+    });
+  }
+
+  // 排序：总流量 -> 通用 -> 专属 -> 其他
+  cards.sort((a, b) => {
+    const score = x => {
+      if (/总|主套餐|套餐总流量|总流量/.test(x.name)) return 1;
+      if (!x.exclusive) return 2;
+      if (x.exclusive) return 3;
+      return 9;
+    };
+    return score(a) - score(b);
+  });
+
+  // 兜底
   if (!cards.length && totalFlow > 0) {
     cards = [{
       name: '套餐总流量',
@@ -531,9 +627,7 @@ function renderFlow(data) {
       unlimited: false,
       exclusive: false,
       voice: false,
-      shared: true,
-      source: 'sum',
-      raw: summary
+      shared: true
     }];
   }
 
@@ -556,7 +650,9 @@ function renderFlow(data) {
     `;
   }
 
-  if (id('pkg-list')) id('pkg-list').innerHTML = html || '<div class="empty-tip">暂无流量包信息</div>';
+  if (id('pkg-list')) {
+    id('pkg-list').innerHTML = html || '<div class="empty-tip">暂无流量包信息</div>';
+  }
 }
 
 /* ── Speed ── */
@@ -636,37 +732,23 @@ function renderSpeed(data) {
 }
 
 /* ── Biz ── */
-async function loadBiz() {
+async function loadBiz(silent = false) {
   try {
     const data = await api('/biz');
-    renderBiz(data);
+    S.bizList = pickBizList(data);
+    renderBiz(S.bizList);
   } catch (e) {
-    if (id('biz-area')) {
+    S.bizList = [];
+    if (!silent && id('biz-area')) {
       id('biz-area').innerHTML = `<div class="error-tip">业务查询失败：${esc(e.message)}</div>`;
+    } else if (id('biz-area')) {
+      id('biz-area').innerHTML = '<div class="empty-tip">暂无已订业务</div>';
     }
   }
 }
 
-function renderBiz(data) {
-  let list = [];
-
-  if (Array.isArray(data?.mainProductInfo)) {
-    list = data.mainProductInfo;
-  } else if (Array.isArray(data?.data?.mainProductInfo)) {
-    list = data.data.mainProductInfo;
-  } else {
-    list = findArray(
-      data,
-      'mainProductInfo',
-      'list',
-      'orderList',
-      'serviceList',
-      'bizList',
-      'items',
-      'records',
-      'productList'
-    );
-  }
+function renderBiz(list) {
+  list = Array.isArray(list) ? list : [];
 
   console.log('[biz] items count=', list.length, ' first=', list[0]);
 
