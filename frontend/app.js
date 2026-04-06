@@ -1,253 +1,350 @@
-let userData = {
-  phone: "",
-  token: "",
-  flow: null,
-  speed: null,
-  biz: null
-};
+'use strict';
 
-document.addEventListener("DOMContentLoaded", () => {
-  const token = localStorage.getItem("ecs_token");
-  const phone = localStorage.getItem("unicom_phone");
-  
-  // 🔥 修复：直接检查本地 Token，不调用后端 checkToken 接口
-  if (token) {
-    userData.token = token;
-    userData.phone = phone || "未知号码";
-    showDash();
-    loadAllData(); // 直接加载数据
-  } else {
-    showLogin();
-  }
-});
+/* ===== State ===== */
+const S = { phone: '', token: '', smsStep: 'send', countdown: 0, timer: null };
 
-// 显示登录页
-function showLogin() {
-  document.getElementById("page-login").style.display = "flex";
-  document.getElementById("page-dash").style.display = "none";
-  document.getElementById("header-user").style.display = "none";
-}
-
-// 显示仪表盘
-function showDash() {
-  document.getElementById("page-login").style.display = "none";
-  document.getElementById("page-dash").style.display = "block";
-  document.getElementById("header-user").style.display = "flex";
-  document.getElementById("header-phone").textContent = userData.phone;
-}
-
-// 退出登录
-function logout() {
-  localStorage.removeItem("ecs_token");
-  localStorage.removeItem("unicom_phone");
-  location.reload();
-}
-
-// 刷新所有数据
-function refreshAll() {
-  loadAllData();
-}
-
-// 加载所有数据
-async function loadAllData() {
-  showLoading();
-  await Promise.all([loadFlow(), loadSpeed(), loadBiz()]);
-  renderAll();
-}
-
-// 显示加载状态
-function showLoading() {
-  document.getElementById("pkg-list").innerHTML = `<div class="loading-row"><div class="spinner"></div>加载中...</div>`;
-  document.getElementById("speed-area").innerHTML = `<div class="loading-row"><div class="spinner"></div>查询中...</div>`;
-  document.getElementById("biz-area").innerHTML = `<div class="loading-row"><div class="spinner"></div>查询中...</div>`;
-}
-
-// ------------------------------
-// 流量加载
-// ------------------------------
-async function loadFlow() {
-  try {
-    const res = await fetch("/api/flow", { headers: { "ecs_token": userData.token } });
-    userData.flow = await res.json();
-  } catch (e) { userData.flow = { code: "E" }; }
-}
-
-// 速率加载
-async function loadSpeed() {
-  try {
-    const res = await fetch("/api/speed", { headers: { "ecs_token": userData.token } });
-    userData.speed = await res.json();
-  } catch (e) { userData.speed = { code: "E" }; }
-}
-
-// 业务加载
-async function loadBiz() {
-  try {
-    const res = await fetch("/api/biz", { headers: { "ecs_token": userData.token } });
-    userData.biz = await res.json();
-  } catch (e) { userData.biz = { code: "E" }; }
-}
-
-// ------------------------------
-// 🔥 渲染逻辑
-// ------------------------------
-function renderAll() {
-  renderFlow();
-  renderSpeed();
-  renderBiz();
-}
-
-// 流量渲染（完美适配你的数据）
-function renderFlow() {
-  const flow = userData.flow;
-  if (!flow || flow.code !== "0000" || !flow.flowSumList) { setFlowEmpty(); return; }
-
-  let totalTotal = 0;
-  let totalUsed = 0;
-  let html = "";
-
-  flow.flowSumList.forEach(item => {
-    const total = parseFloat(item.xcanusevalue || 0);
-    const used = parseFloat(item.xusedvalue || 0);
-    const remain = Math.max(0, total - used);
-    const pct = total > 0 ? (used / total * 100).toFixed(1) : 0;
-    const name = item.flowtype == 1 ? "通用流量" : "定向流量";
-
-    totalTotal += total;
-    totalUsed += used;
-
-    html += `
-    <div class="pkg-item">
-      <div class="pkg-name">${name}</div>
-      <div class="pkg-progress"><div class="pkg-bar-bg"><div class="pkg-bar-fill" style="width:${pct}%"></div></div></div>
-      <div class="pkg-nums"><span>剩余 ${remain.toFixed(1)} MB</span><span>${used.toFixed(1)} / ${total.toFixed(1)} MB</span></div>
-    </div>`;
+/* ===== API ===== */
+async function api(path, extra = {}) {
+  const res = await fetch('/api' + path, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(S.token ? { 'x-ecs-token': S.token } : {}),
+    },
+    body: JSON.stringify({ mobileNumber: S.phone, ...extra }),
   });
-
-  const allRemain = Math.max(0, totalTotal - totalUsed);
-  const allPct = totalTotal > 0 ? (totalUsed / totalTotal * 100).toFixed(1) : 0;
-
-  document.getElementById("s-remain").textContent = `${allRemain.toFixed(1)} MB`;
-  document.getElementById("s-used").textContent = `${totalUsed.toFixed(1)} MB`;
-  document.getElementById("s-total").textContent = `${totalTotal.toFixed(1)} MB`;
-  document.getElementById("s-pct").textContent = `${allPct}%`;
-  document.getElementById("main-bar").style.width = `${allPct}%`;
-  document.getElementById("bar-used-lbl").textContent = `已用 ${totalUsed.toFixed(1)} MB`;
-  document.getElementById("bar-total-lbl").textContent = `共 ${totalTotal.toFixed(1)} MB`;
-  document.getElementById("pkg-list").innerHTML = html;
-}
-
-function setFlowEmpty() {
-  document.getElementById("s-remain").textContent = "—";
-  document.getElementById("s-used").textContent = "—";
-  document.getElementById("s-total").textContent = "—";
-  document.getElementById("s-pct").textContent = "—";
-  document.getElementById("main-bar").style.width = "0%";
-  document.getElementById("pkg-list").innerHTML = `<div class="empty-row">暂无数据</div>`;
-}
-
-// 速率渲染
-function renderSpeed() {
-  const speed = userData.speed;
-  if (!speed || speed.code !== "0000") {
-    document.getElementById("speed-area").innerHTML = `<div class="error-row">速率查询失败</div>`;
-    document.getElementById("net-badge").textContent = "—";
-    return;
+  const data = await res.json();
+  console.log(`[API] ${path}`, JSON.stringify(data).slice(0, 1000));
+  if (!res.ok || (data.code && !['0000','200',200,'1000','success','SUCCESS'].includes(data.code))) {
+    throw new Error(data.message || data.resultMessage || data.msg || `请求失败 (${res.status})`);
   }
-  const d = speed.flowResource || {};
-  document.getElementById("net-badge").textContent = "5G";
-  document.getElementById("speed-area").innerHTML = `
-  <div class="speed-grid">
-    <div class="speed-card"><div class="speed-icon down"></div><div class="speed-val">${d.flowPercent || "464"}</div><div class="speed-label">Mbps 下行</div></div>
-    <div class="speed-card"><div class="speed-icon up"></div><div class="speed-val">50</div><div class="speed-label">Mbps 上行</div></div>
-  </div>
-  <div class="speed-info">
-    <div class="info-row"><span>QCI 等级</span><span>9</span></div>
-    <div class="info-row"><span>网络类型</span><span>5G</span></div>
-    <div class="info-row"><span>限速状态</span><span class="success">正常</span></div>
-  </div>`;
+  return data;
 }
 
-// 业务渲染
-function renderBiz() {
-  const biz = userData.biz;
-  if (!biz || biz.code !== "0000" || !biz.data || !biz.data.mainProductInfo) {
-    document.getElementById("biz-area").innerHTML = `<div class="error-row">查询失败</div>`;
-    document.getElementById("biz-count").textContent = "0项";
-    return;
+/* ===== Deep search helpers ===== */
+function dig(obj, ...keys) {
+  if (!obj || typeof obj !== 'object') return undefined;
+  for (const k of keys) {
+    if (obj[k] !== undefined && obj[k] !== null && obj[k] !== '') return obj[k];
   }
-  const list = biz.data.mainProductInfo;
-  let html = "";
-  list.forEach(item => {
-    html += `<div class="biz-item"><div>${item.productName}</div><div class="biz-time">${item.startDate || ""}</div></div>`;
-  });
-  document.getElementById("biz-count").textContent = `${list.length}项`;
-  document.getElementById("biz-area").innerHTML = html;
+  for (const v of Object.values(obj)) {
+    if (v && typeof v === 'object') {
+      const found = dig(v, ...keys);
+      if (found !== undefined) return found;
+    }
+  }
+  return undefined;
 }
 
-// ------------------------------
-// 登录逻辑（修复：只保留短信，去掉 Token 检查）
-// ------------------------------
-let loginTab = "sms";
-function switchLoginTab(tab, el) {
-  loginTab = tab;
-  document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
-  el.classList.add("active");
-  document.getElementById("login-sms").style.display = tab === "sms" ? "block" : "none";
-  document.getElementById("login-token").style.display = tab === "token" ? "block" : "none";
+function findArray(obj, ...preferKeys) {
+  if (!obj || typeof obj !== 'object') return [];
+  for (const k of preferKeys) {
+    if (Array.isArray(obj[k]) && obj[k].length && typeof obj[k][0] === 'object') return obj[k];
+  }
+  for (const [, v] of Object.entries(obj)) {
+    if (Array.isArray(v) && v.length && typeof v[0] === 'object') return v;
+  }
+  for (const v of Object.values(obj)) {
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      const found = findArray(v, ...preferKeys);
+      if (found.length) return found;
+    }
+  }
+  return [];
 }
 
-async function sendSms() {
-  const phone = document.getElementById("inp-phone").value.trim();
-  if (!/^1[3-9]\d{9}$/.test(phone)) return alert("手机号错误");
-  const btn = document.getElementById("btn-sms-submit");
-  btn.disabled = true; btn.textContent = "发送中...";
-  try {
-    const res = await fetch("/api/sendCode", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone }) });
-    const data = await res.json();
-    if (data.code === "0000") { startCountDown(); document.getElementById("sms-code-group").style.display = "block"; showMsg("sms", "验证码已发送", "success"); }
-  } catch (e) { showMsg("sms", "请求失败", "error"); }
-  btn.disabled = false; btn.textContent = "获取验证码";
-}
-
-function startCountDown() {
-  const btn = document.getElementById("btn-resend");
-  let s = 60; btn.disabled = true; btn.textContent = `${s}秒后重发`;
-  const timer = setInterval(() => { s--; btn.textContent = `${s}秒后重发`; if (s <= 0) { clearInterval(timer); btn.disabled = false; btn.textContent = "重新发送"; } }, 1000);
+/* ===== Login ===== */
+function switchLoginTab(type, btn) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  show('login-sms', type === 'sms');
+  show('login-token', type === 'token');
 }
 
 async function handleSmsLogin() {
-  const phone = document.getElementById("inp-phone").value.trim();
-  const code = document.getElementById("inp-code").value.trim();
-  if (!phone || !code) return showMsg("sms", "请输入完整信息", "error");
-  const btn = document.getElementById("btn-sms-submit");
-  btn.disabled = true; btn.textContent = "登录中...";
+  const phone = val('inp-phone');
+  if (!/^1[3-9]\d{9}$/.test(phone)) { showMsg('msg-sms', '请输入有效的联通手机号', 'err'); return; }
+  S.phone = phone;
+
+  if (S.smsStep === 'send') {
+    const btn = id('btn-sms-submit');
+    btn.disabled = true; btn.textContent = '发送中...';
+    try {
+      await api('/send-sms');
+      showMsg('msg-sms', '验证码已发送，请注意查收', 'ok');
+      show('sms-code-group', true);
+      btn.textContent = '登 录';
+      S.smsStep = 'verify';
+      startCountdown();
+    } catch (e) { showMsg('msg-sms', e.message, 'err'); btn.textContent = '获取验证码'; }
+    btn.disabled = false;
+    return;
+  }
+
+  const code = val('inp-code');
+  if (!code) { showMsg('msg-sms', '请输入验证码', 'err'); return; }
+  const btn = id('btn-sms-submit');
+  btn.disabled = true; btn.textContent = '登录中...';
   try {
-    const res = await fetch("/api/loginSms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone, code }) });
-    const data = await res.json();
-    if (data.code === "0000") {
-      localStorage.setItem("ecs_token", data.data.ecsToken);
-      localStorage.setItem("unicom_phone", phone);
-      location.reload();
-    } else { showMsg("sms", data.desc || "登录失败", "error"); }
-  } catch (e) { showMsg("sms", "请求失败", "error"); }
-  btn.disabled = false; btn.textContent = "登录";
+    const data = await api('/login-sms', { randomNum: code });
+    S.token = data.token || data.ecs_token || data.accessToken
+           || data.result?.token || data.result?.ecs_token
+           || data.data?.token   || data.data?.ecs_token || '';
+    console.log('[login] token prefix =', S.token ? S.token.slice(0,20)+'...' : '(none)');
+    onLoginSuccess();
+  } catch (e) {
+    showMsg('msg-sms', e.message, 'err');
+    btn.disabled = false; btn.textContent = '登 录';
+  }
 }
 
-// 🔥 修复：Token 登录逻辑改为只保存 Token，不验证
+async function sendSms() {
+  const phone = val('inp-phone');
+  if (!/^1[3-9]\d{9}$/.test(phone)) return;
+  S.phone = phone;
+  try { await api('/send-sms'); startCountdown(); showMsg('msg-sms', '验证码已重新发送', 'ok'); }
+  catch (e) { showMsg('msg-sms', e.message, 'err'); }
+}
+
+function startCountdown() {
+  S.countdown = 60;
+  const btn = id('btn-resend');
+  btn.disabled = true;
+  clearInterval(S.timer);
+  S.timer = setInterval(() => {
+    S.countdown--;
+    btn.textContent = `${S.countdown}s 后重发`;
+    if (S.countdown <= 0) { clearInterval(S.timer); btn.textContent = '重新发送'; btn.disabled = false; }
+  }, 1000);
+}
+
 async function handleTokenLogin() {
-  const token = document.getElementById("inp-token").value.trim();
-  const phone = document.getElementById("inp-token-phone").value.trim();
-  if (!token) return showMsg("token", "请输入Token", "error");
-  
-  // 直接保存，不调用 checkToken 接口
-  localStorage.setItem("ecs_token", token);
-  localStorage.setItem("unicom_phone", phone || "未知号码");
-  location.reload();
+  const token = val('inp-token').trim();
+  if (!token) { showMsg('msg-token', '请输入 ECS Token', 'err'); return; }
+  S.token = token;
+  S.phone = val('inp-token-phone');
+  const btn = document.querySelector('#login-token .btn-primary');
+  btn.disabled = true; btn.textContent = '验证中...';
+  try {
+    await api('/flow');
+    onLoginSuccess();
+  } catch (e) {
+    showMsg('msg-token', 'Token 无效或已过期：' + e.message, 'err');
+    S.token = '';
+    btn.disabled = false; btn.textContent = '验证并登录';
+  }
 }
 
-function showMsg(page, text, type) {
-  const el = document.getElementById(`msg-${page}`);
-  el.textContent = text; el.className = `msg ${type}`;
-  setTimeout(() => el.textContent = "", 3000);
+function onLoginSuccess() {
+  show('page-login', false); show('page-dash', true);
+  show('header-user', true);
+  id('header-phone').textContent = S.phone || '已登录';
+  loadAll();
+}
+
+function logout() {
+  Object.assign(S, { phone: '', token: '', smsStep: 'send', countdown: 0 });
+  clearInterval(S.timer);
+  show('page-login', true); show('page-dash', false); show('header-user', false);
+  show('sms-code-group', false);
+  id('btn-sms-submit').textContent = '获取验证码';
+  ['inp-phone','inp-code','inp-token','inp-token-phone'].forEach(i => id(i).value = '');
+}
+
+/* ===== Data ===== */
+function loadAll() { loadFlow(); loadSpeed(); loadBiz(); }
+
+async function refreshAll() {
+  const btn = id('btn-refresh');
+  btn.classList.add('spinning');
+  id('pkg-list').innerHTML   = '<div class="loading-row"><div class="spinner"></div>刷新中...</div>';
+  id('speed-area').innerHTML = '<div class="loading-row"><div class="spinner"></div>查询中...</div>';
+  id('biz-area').innerHTML   = '<div class="loading-row"><div class="spinner"></div>查询中...</div>';
+  await Promise.allSettled([loadFlow(), loadSpeed(), loadBiz()]);
+  btn.classList.remove('spinning');
+}
+
+/* ── Flow ── */
+async function loadFlow() {
+  try {
+    const data = await api('/flow');
+    renderFlow(data);
+  } catch (e) {
+    id('pkg-list').innerHTML = `<div class="error-tip">流量查询失败：${esc(e.message)}<br>
+      <small style="color:var(--text-3)">请按 F12 → Console 查看 [API] /flow 原始响应</small></div>`;
+  }
+}
+
+function renderFlow(data) {
+  const pkgs = findArray(data,
+    'packageList','flowPackageList','pkgList','packages',
+    'list','items','records','flowList');
+
+  console.log('[flow] pkgs count=', pkgs.length, '  first=', pkgs[0]);
+
+  let total = 0, used = 0, left = 0;
+  const list = pkgs.map(p => {
+    const t = parseMB(p.total       || p.packageFlow  || p.flowSize    || p.totalFlow   || p.totalSize  || p.allSize);
+    const u = parseMB(p.usedFlow    || p.used         || p.usedSize    || p.useFlow     || p.usedTraffic|| p.usedAmount);
+    const l = parseMB(p.leftFlow    || p.remainFlow   || p.left        || p.remainSize  || p.surplusFlow|| p.balance) || Math.max(t - u, 0);
+    total += t; used += u; left += l;
+    return {
+      name  : p.packageName || p.name || p.productName || p.offerName || p.pkgName || '流量包',
+      t, u, l,
+      expire: p.expireDate  || p.endDate || p.expiryDate || p.validDate || p.endTime || '',
+    };
+  });
+
+  const pct = total > 0 ? Math.round(used / total * 100) : 0;
+  id('s-remain').textContent = fmtGB(left);
+  id('s-used').textContent   = fmtGB(used);
+  id('s-total').textContent  = fmtGB(total);
+  id('s-pct').textContent    = pct + '%';
+  id('bar-used-lbl').textContent  = '已用 ' + fmtGB(used);
+  id('bar-total-lbl').textContent = '共 '   + fmtGB(total);
+
+  const bar = id('main-bar');
+  bar.style.width      = Math.min(pct, 100) + '%';
+  bar.style.background = pct > 85 ? '#dc2626' : pct > 60 ? '#d97706' : '#2563eb';
+
+  if (!list.length) {
+    id('pkg-list').innerHTML = `<div class="error-tip">
+      接口有响应但未找到流量包数组。<br>
+      <small style="color:var(--text-3)">请 F12 → Console 查看 [API] /flow 原始 JSON，把结构截图反馈给开发者修复字段映射。</small>
+    </div>`;
+    return;
+  }
+
+  id('pkg-list').innerHTML = list.map(p => {
+    const pp  = p.t > 0 ? Math.round(p.u / p.t * 100) : 0;
+    const cls = pp > 85 ? 'red' : pp > 60 ? 'amber' : 'green';
+    const barColor = pp > 85 ? '#dc2626' : pp > 60 ? '#d97706' : '#2563eb';
+    return `<div class="pkg-item">
+      <div class="pkg-left">
+        <div class="pkg-name">${esc(p.name)}</div>
+        ${p.expire ? `<div class="pkg-expire">到期 ${p.expire}</div>` : '<div class="pkg-expire">&nbsp;</div>'}
+        <div class="mini-bar-bg"><div class="mini-bar" style="width:${Math.min(pp,100)}%;background:${barColor}"></div></div>
+      </div>
+      <div class="pkg-right">
+        <div class="pkg-remain">${fmtGB(p.l)}</div>
+        <div class="pkg-of">/ ${fmtGB(p.t)}</div>
+        <span class="pkg-pct ${cls}">已用 ${pp}%</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ── Speed ── */
+async function loadSpeed() {
+  try {
+    const data = await api('/speed');
+    renderSpeed(data);
+  } catch (e) {
+    id('speed-area').innerHTML = `<div class="error-tip">速率查询失败：${esc(e.message)}</div>`;
+  }
+}
+
+function renderSpeed(data) {
+  const dl  = numOf(dig(data, 'downRate','downloadRate','downSpeed','downloadSpeed','downBandwidth','dlRate'));
+  const ul  = numOf(dig(data, 'upRate','uploadRate','upSpeed','uploadSpeed','upBandwidth','ulRate'));
+  const qci = dig(data, 'qci','QCI','qciLevel','qciValue','qciCode') ?? '—';
+  const net = dig(data, 'networkType','netType','network','accessType','netTypeName') ?? '5G';
+  const limitFlag = ['1','true',true,'yes'].includes(dig(data, 'limitFlag','isLimit','speedLimit','isLimitSpeed','limitStatus'));
+  const limitV    = dig(data, 'limitRate','limitSpeed','limitBandwidth','limitValue') ?? '';
+
+  id('net-badge').textContent = net;
+  id('speed-area').innerHTML = `
+    <div class="speed-pair">
+      <div class="speed-block">
+        <div class="speed-icon dl">↓</div>
+        <div><div class="speed-val">${dl || '—'}</div><div class="speed-unit">Mbps 下行</div></div>
+      </div>
+      <div class="speed-block">
+        <div class="speed-icon ul">↑</div>
+        <div><div class="speed-val">${ul || '—'}</div><div class="speed-unit">Mbps 上行</div></div>
+      </div>
+    </div>
+    <div class="info-rows">
+      ${row('QCI 等级', qci)}
+      ${row('网络类型', net)}
+      ${row('限速状态', limitFlag
+        ? `<span class="pkg-pct amber">已限速${limitV ? ' ' + limitV + ' Mbps' : ''}</span>`
+        : '<span class="pkg-pct green">正常</span>')}
+      ${dig(data,'cellId','cell_id','cellID') ? row('Cell ID', dig(data,'cellId','cell_id','cellID')) : ''}
+    </div>`;
+}
+
+/* ── Biz ── */
+async function loadBiz() {
+  try {
+    const data = await api('/biz');
+    renderBiz(data);
+  } catch (e) {
+    id('biz-area').innerHTML = `<div class="error-tip">业务查询失败：${esc(e.message)}</div>`;
+  }
+}
+
+function renderBiz(data) {
+  const list = findArray(data, 'list','orderList','serviceList','bizList','items','records','productList');
+  console.log('[biz] items count=', list.length, '  first=', list[0]);
+
+  id('biz-count').textContent = list.length ? list.length + ' 项' : '';
+  if (!list.length) {
+    id('biz-area').innerHTML = '<div class="empty-tip">暂无已订业务</div>';
+    return;
+  }
+  id('biz-area').innerHTML = list.map(b => {
+    const price = b.price || b.fee || b.month_fee || b.monthFee || b.chargeFee || b.cost || b.amount || '';
+    const name  = b.serviceName || b.name || b.productName || b.offerName || b.bizName || b.spName || '业务';
+    const date  = b.subscribeDate || b.createDate || b.orderDate || b.startDate || b.orderTime || '';
+    return `<div class="biz-item">
+      <div>
+        <div class="biz-name">${esc(name)}</div>
+        ${date ? `<div class="biz-date">${date}</div>` : ''}
+      </div>
+      <div class="biz-price">${price ? '¥' + price + '/月' : '免费'}</div>
+    </div>`;
+  }).join('');
+}
+
+/* ===== Helpers ===== */
+const id  = i => document.getElementById(i);
+const val = i => id(i).value.trim();
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const row = (k, v) => `<div class="info-row"><span class="info-key">${k}</span><span class="info-val">${v}</span></div>`;
+const numOf = v => (v !== undefined && v !== null && v !== '') ? (parseFloat(v) || 0) : 0;
+
+function parseMB(v) {
+  if (v === undefined || v === null || v === '') return 0;
+  if (typeof v === 'number') return v;
+  const s = String(v).trim().toUpperCase().replace(/,/g,'');
+  const n = parseFloat(s);
+  if (isNaN(n)) return 0;
+  if (s.endsWith('TB') || s.endsWith('T')) return n * 1024 * 1024;
+  if (s.endsWith('GB') || s.endsWith('G')) return n * 1024;
+  if (s.endsWith('KB') || s.endsWith('K')) return n / 1024;
+  // 如果数字很小（< 2000），可能是 GB 单位
+  if (n < 2000 && !s.endsWith('MB') && !s.endsWith('M')) return n * 1024;
+  return n; // 默认 MB
+}
+
+function fmtGB(mb) {
+  if (!mb) return '—';
+  if (mb >= 1024 * 1024) return (mb / 1024 / 1024).toFixed(2) + ' TB';
+  if (mb >= 1024) return (mb / 1024).toFixed(2) + ' GB';
+  return mb.toFixed(0) + ' MB';
+}
+
+function show(elId, visible) {
+  const el = id(elId);
+  if (el) el.style.display = visible ? '' : 'none';
+}
+
+function showMsg(elId, text, type) {
+  const el = id(elId);
+  if (!el) return;
+  el.textContent = text;
+  el.className = 'msg show ' + type;
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.textContent = ''; el.className = 'msg'; }, 5000);
 }
