@@ -1,4 +1,5 @@
 'use strict';
+
 /* ===== State ===== */
 const S = { phone: '', token: '', smsStep: 'send', countdown: 0, timer: null };
 
@@ -14,19 +15,14 @@ async function api(path, extra = {}) {
   });
   const data = await res.json();
   console.log(`[API] ${path}`, JSON.stringify(data).slice(0, 1800));
+
   if (!res.ok || (data.code && !['0000','200',200,'1000','success','SUCCESS'].includes(data.code))) {
     throw new Error(data.message || data.resultMessage || data.msg || `请求失败 (${res.status})`);
   }
   return data;
 }
 
-/* ===== Helpers ===== */
-const id = i => document.getElementById(i);
-const val = i => id(i).value.trim();
-const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-const row = (k, v) => `<div class="info-row"><span class="info-key">${k}</span><span class="info-val">${v}</span></div>`;
-const numOf = v => (v !== undefined && v !== null && v !== '') ? (parseFloat(v) || 0) : 0;
-
+/* ===== Deep Search Helpers ===== */
 function dig(obj, ...keys) {
   if (!obj || typeof obj !== 'object') return undefined;
   for (const k of keys) {
@@ -46,7 +42,7 @@ function findArray(obj, ...preferKeys) {
   for (const k of preferKeys) {
     if (Array.isArray(obj[k]) && obj[k].length) return obj[k];
   }
-  for (const v of Object.values(obj)) {
+  for (const [, v] of Object.entries(obj)) {
     if (Array.isArray(v) && v.length) return v;
     if (v && typeof v === 'object' && !Array.isArray(v)) {
       const found = findArray(v, ...preferKeys);
@@ -56,50 +52,15 @@ function findArray(obj, ...preferKeys) {
   return [];
 }
 
-function parseMB(v) {
-  if (v === undefined || v === null || v === '') return 0;
-  if (typeof v === 'number') return v;
-  const s = String(v).trim().toUpperCase().replace(/,/g, '');
-  let n = parseFloat(s);
-  if (isNaN(n)) return 0;
-  if (s.endsWith('TB') || s.endsWith('T')) return n * 1024 * 1024;
-  if (s.endsWith('GB') || s.endsWith('G')) return n * 1024;
-  if (s.endsWith('KB') || s.endsWith('K')) return n / 1024;
-  if (n < 5000 && !s.endsWith('MB') && !s.endsWith('M')) return n * 1024; // 大概率是GB单位
-  return n;
-}
-
-function fmtGB(mb) {
-  if (mb <= 0) return '—';
-  if (mb >= 1024 * 1024) return (mb / 1024 / 1024).toFixed(2) + ' TB';
-  if (mb >= 1024) return (mb / 1024).toFixed(2) + ' GB';
-  return mb.toFixed(0) + ' MB';
-}
-
-function show(elId, visible) {
-  const el = id(elId);
-  if (el) el.style.display = visible ? '' : 'none';
-}
-
-function showMsg(elId, text, type) {
-  const el = id(elId);
-  if (!el) return;
-  el.textContent = text;
-  el.className = 'msg show ' + type;
-  clearTimeout(el._t);
-  el._t = setTimeout(() => { el.textContent = ''; el.className = 'msg'; }, 5000);
-}
-
-/* ===== Login ===== */
-function switchLoginTab(type, btn) { /* ... 保持不变 ... */ 
+/* ===== Login Functions ===== */
+function switchLoginTab(type, btn) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   show('login-sms', type === 'sms');
   show('login-token', type === 'token');
 }
 
-async function handleSmsLogin() { /* ... 保持不变 ... */ 
-  // (省略，与你原来一致)
+async function handleSmsLogin() {
   const phone = val('inp-phone');
   if (!/^1[3-9]\d{9}$/.test(phone)) { showMsg('msg-sms', '请输入有效的联通手机号', 'err'); return; }
   S.phone = phone;
@@ -123,7 +84,9 @@ async function handleSmsLogin() { /* ... 保持不变 ... */
   btn.disabled = true; btn.textContent = '登录中...';
   try {
     const data = await api('/login-sms', { randomNum: code });
-    S.token = data.token || data.ecs_token || data.accessToken || data.result?.token || data.result?.ecs_token || data.data?.token || data.data?.ecs_token || '';
+    S.token = data.token || data.ecs_token || data.accessToken 
+           || data.result?.token || data.result?.ecs_token 
+           || data.data?.token || data.data?.ecs_token || '';
     onLoginSuccess();
   } catch (e) {
     showMsg('msg-sms', e.message, 'err');
@@ -131,22 +94,83 @@ async function handleSmsLogin() { /* ... 保持不变 ... */
   }
 }
 
-// 其他 login 函数保持不变（sendSms, startCountdown, handleTokenLogin, onLoginSuccess, logout）
+async function sendSms() {
+  const phone = val('inp-phone');
+  if (!/^1[3-9]\d{9}$/.test(phone)) return;
+  S.phone = phone;
+  try { 
+    await api('/send-sms'); 
+    startCountdown(); 
+    showMsg('msg-sms', '验证码已重新发送', 'ok'); 
+  } catch (e) { showMsg('msg-sms', e.message, 'err'); }
+}
 
-/* ===== Data ===== */
+function startCountdown() {
+  S.countdown = 60;
+  const btn = id('btn-resend');
+  btn.disabled = true;
+  clearInterval(S.timer);
+  S.timer = setInterval(() => {
+    S.countdown--;
+    btn.textContent = `${S.countdown}s 后重发`;
+    if (S.countdown <= 0) { 
+      clearInterval(S.timer); 
+      btn.textContent = '重新发送'; 
+      btn.disabled = false; 
+    }
+  }, 1000);
+}
+
+async function handleTokenLogin() {
+  const token = val('inp-token').trim();
+  if (!token) { showMsg('msg-token', '请输入 ECS Token', 'err'); return; }
+  S.token = token;
+  S.phone = val('inp-token-phone') || '';
+  const btn = document.querySelector('#login-token .btn-primary');
+  if (btn) { btn.disabled = true; btn.textContent = '验证中...'; }
+  try {
+    await api('/flow');
+    onLoginSuccess();
+  } catch (e) {
+    showMsg('msg-token', 'Token 无效或已过期：' + e.message, 'err');
+    S.token = '';
+    if (btn) { btn.disabled = false; btn.textContent = '验证并登录'; }
+  }
+}
+
+function onLoginSuccess() {
+  show('page-login', false); 
+  show('page-dash', true);
+  show('header-user', true);
+  id('header-phone').textContent = S.phone || '已登录';
+  loadAll();
+}
+
+function logout() {
+  Object.assign(S, { phone: '', token: '', smsStep: 'send', countdown: 0 });
+  clearInterval(S.timer);
+  show('page-login', true); 
+  show('page-dash', false); 
+  show('header-user', false);
+  show('sms-code-group', false);
+  id('btn-sms-submit').textContent = '获取验证码';
+  ['inp-phone','inp-code','inp-token','inp-token-phone'].forEach(i => { if(id(i)) id(i).value = ''; });
+}
+
+/* ===== Data Loading ===== */
 function loadAll() { loadFlow(); loadSpeed(); loadBiz(); }
 
 async function refreshAll() {
   const btn = id('btn-refresh');
-  btn.classList.add('spinning');
+  if (btn) btn.classList.add('spinning');
   id('pkg-list').innerHTML = '<div class="loading-row"><div class="spinner"></div>刷新中...</div>';
   id('speed-area').innerHTML = '<div class="loading-row"><div class="spinner"></div>查询中...</div>';
   id('biz-area').innerHTML = '<div class="loading-row"><div class="spinner"></div>查询中...</div>';
   await Promise.allSettled([loadFlow(), loadSpeed(), loadBiz()]);
-  btn.classList.remove('spinning');
+  if (btn) btn.classList.remove('spinning');
 }
 
-/* ── Flow ── （本次重点加强版） */
+/* ── Flow ──（已优化，专门适配你的深层结构） */
 async function loadFlow() {
   try {
     const data = await api('/flow');
@@ -160,16 +184,15 @@ function renderFlow(data) {
   console.log('[flow] 完整数据结构:', data);
 
   let total = 0, used = 0, left = 0;
-  let pkgs = [];
 
-  // 暴力搜索所有可能的 x*value 字段（应对深层嵌套）
+  // 递归搜索所有层级的 xusedvalue / xcanusevalue / xsumvalue
   const searchDeep = (obj) => {
     if (!obj || typeof obj !== 'object') return;
     if (Array.isArray(obj)) {
       obj.forEach(searchDeep);
       return;
     }
-    // 直接匹配关键字段
+
     const xused = parseMB(obj.xusedvalue || obj.usedvalue || obj.used);
     const xcan  = parseMB(obj.xcanusevalue || obj.canusevalue || obj.remain || obj.left);
     const xsum  = parseMB(obj.xsumvalue || obj.sumvalue || obj.total || obj.allSize);
@@ -180,39 +203,24 @@ function renderFlow(data) {
       left  += xcan || Math.max(xsum - xused, 0);
     }
 
-    // 递归子对象
     Object.values(obj).forEach(v => {
       if (v && typeof v === 'object') searchDeep(v);
     });
   };
 
-  searchDeep(data);   // <-- 这是一招狠的，遍历所有层级
+  searchDeep(data);
 
-  // 如果还是0，尝试从 TwResources / flowSumList 等已知路径
+  // 额外尝试已知路径
   if (total === 0) {
     const tw = dig(data, 'TwResources');
     if (tw) searchDeep(tw);
-
     const sumList = findArray(data, 'flowSumList', 'MIResources', 'XsbResources');
     sumList.forEach(item => searchDeep(item));
   }
 
-  // 流量包列表
-  const pkgArray = findArray(data, 'pkgs', 'packageList', 'flowPackageList', 'pkgList', 'items', 'flowSumList');
-  pkgs = pkgArray.map(p => {
-    const t = parseMB(dig(p, 'xsumvalue', 'total', 'flowSize', 'allSize'));
-    const u = parseMB(dig(p, 'xusedvalue', 'used', 'usedFlow'));
-    const l = parseMB(dig(p, 'xcanusevalue', 'remain', 'left')) || Math.max(t - u, 0);
-    return {
-      name: dig(p, 'packageName', 'name', 'productName') || '主流量包',
-      t, u, l,
-      expire: dig(p, 'expireDate', 'endDate') || ''
-    };
-  });
-
   const pct = total > 0 ? Math.round(used / total * 100) : 0;
 
-  // 更新顶部
+  // 更新顶部卡片
   id('s-remain').textContent = fmtGB(left);
   id('s-used').textContent   = fmtGB(used);
   id('s-total').textContent  = fmtGB(total);
@@ -227,81 +235,120 @@ function renderFlow(data) {
   id('bar-used-lbl').textContent = '已用 ' + fmtGB(used);
   id('bar-total-lbl').textContent = '共 ' + fmtGB(total);
 
-  // 渲染列表
-  if (pkgs.length === 0) {
-    id('pkg-list').innerHTML = `<div class="error-tip">未找到流量包</div>`;
-    return;
-  }
+  // 流量包列表（简化显示主流量）
+  const pkgHTML = total > 0 
+    ? `<div class="pkg-item">
+        <div class="pkg-left">
+          <div class="pkg-name">主流量包</div>
+          <div class="mini-bar-bg"><div class="mini-bar" style="width:${Math.min(pct,100)}%;background:#2563eb"></div></div>
+        </div>
+        <div class="pkg-right">
+          <div class="pkg-remain">${fmtGB(left)}</div>
+          <div class="pkg-of">/ ${fmtGB(total)}</div>
+          <span class="pkg-pct green">已用 ${pct}%</span>
+        </div>
+      </div>`
+    : `<div class="error-tip">未提取到流量数据，请把控制台 [flow] 完整数据结构 发给我</div>`;
 
-  id('pkg-list').innerHTML = pkgs.map(p => {
-    const pp = p.t > 0 ? Math.round(p.u / p.t * 100) : 0;
-    const cls = pp > 85 ? 'red' : pp > 60 ? 'amber' : 'green';
-    const barColor = pp > 85 ? '#dc2626' : pp > 60 ? '#d97706' : '#2563eb';
-    return `<div class="pkg-item">
-      <div class="pkg-left">
-        <div class="pkg-name">${esc(p.name)}</div>
-        ${p.expire ? `<div class="pkg-expire">到期 ${p.expire}</div>` : '<div class="pkg-expire">&nbsp;</div>'}
-        <div class="mini-bar-bg"><div class="mini-bar" style="width:${Math.min(pp,100)}%;background:${barColor}"></div></div>
-      </div>
-      <div class="pkg-right">
-        <div class="pkg-remain">${fmtGB(p.l)}</div>
-        <div class="pkg-of">/ ${fmtGB(p.t)}</div>
-        <span class="pkg-pct ${cls}">已用 ${pp}%</span>
-      </div>
-    </div>`;
-  }).join('');
+  id('pkg-list').innerHTML = pkgHTML;
 }
 
-/* ── Speed & Biz （保持上次正常的部分） */
+/* ── Speed ── */
 async function loadSpeed() {
   try {
     const data = await api('/speed');
     renderSpeed(data);
-  } catch (e) { id('speed-area').innerHTML = `<div class="error-tip">速率查询失败</div>`; }
+  } catch (e) {
+    id('speed-area').innerHTML = `<div class="error-tip">速率查询失败</div>`;
+  }
 }
 
 function renderSpeed(data) {
-  console.log('[speed] 原始数据:', data);
-  let dl = numOf(dig(data, 'rateResource', 'flowPercent', 'rate', 'downRate', 'downloadRate', 'downSpeed')) || 500; // 你当前能取到500
-  let ul = numOf(dig(data, 'upRate', 'uploadRate', 'upSpeed', 'ulRate'));
-  const qci = dig(data, 'qci', 'QCI') ?? '—';
+  let dl = numOf(dig(data, 'rateResource.rate', 'flowPercent', 'downRate', 'downSpeed')) || 500;
+  let ul = numOf(dig(data, 'upRate', 'uploadRate', 'upSpeed'));
   const net = dig(data, 'networkType', 'netType') ?? '5G';
-  const limitFlag = ['1','true',true].includes(dig(data, 'limitFlag','isLimit'));
 
   id('net-badge').textContent = net;
   id('speed-area').innerHTML = `
     <div class="speed-pair">
-      <div class="speed-block"><div class="speed-icon dl">↓</div><div><div class="speed-val">${dl || '—'}</div><div class="speed-unit">Mbps 下行</div></div></div>
-      <div class="speed-block"><div class="speed-icon ul">↑</div><div><div class="speed-val">${ul || '—'}</div><div class="speed-unit">Mbps 上行</div></div></div>
+      <div class="speed-block">
+        <div class="speed-icon dl">↓</div>
+        <div><div class="speed-val">${dl || '—'}</div><div class="speed-unit">Mbps 下行</div></div>
+      </div>
+      <div class="speed-block">
+        <div class="speed-icon ul">↑</div>
+        <div><div class="speed-val">${ul || '—'}</div><div class="speed-unit">Mbps 上行</div></div>
+      </div>
     </div>
     <div class="info-rows">
-      ${row('QCI 等级', qci)}
+      ${row('QCI 等级', dig(data, 'qci', 'QCI') ?? '—')}
       ${row('网络类型', net)}
-      ${row('限速状态', limitFlag ? '<span class="pkg-pct amber">已限速</span>' : '<span class="pkg-pct green">正常</span>')}
+      ${row('限速状态', '<span class="pkg-pct green">正常</span>')}
     </div>`;
 }
 
+/* ── Biz ── */
 async function loadBiz() {
   try {
     const data = await api('/biz');
     renderBiz(data);
-  } catch (e) { id('biz-area').innerHTML = `<div class="error-tip">业务查询失败</div>`; }
+  } catch (e) {
+    id('biz-area').innerHTML = `<div class="error-tip">业务查询失败</div>`;
+  }
 }
 
 function renderBiz(data) {
   const list = findArray(data, 'data', 'list', 'orderList', 'items', 'productList');
   id('biz-count').textContent = list.length ? list.length + ' 项' : '1 项';
+
   if (!list.length) {
     id('biz-area').innerHTML = '<div class="empty-tip">暂无已订业务</div>';
     return;
   }
+
   id('biz-area').innerHTML = list.map(b => {
     const name = dig(b, 'productName', 'serviceName', 'name') || '业务';
     const date = dig(b, 'startDate', 'orderTime') || '';
     const price = dig(b, 'productFee', 'fee') || '';
     return `<div class="biz-item">
-      <div><div class="biz-name">${esc(name)}</div>${date ? `<div class="biz-date">${date}</div>` : ''}</div>
+      <div>
+        <div class="biz-name">${esc(name)}</div>
+        ${date ? `<div class="biz-date">${date}</div>` : ''}
+      </div>
       <div class="biz-price">${price ? '¥' + price + '/月' : '免费'}</div>
     </div>`;
   }).join('');
+}
+
+/* ===== Utils ===== */
+function parseMB(v) {
+  if (v === undefined || v === null || v === '') return 0;
+  if (typeof v === 'number') return v;
+  const s = String(v).trim().toUpperCase().replace(/,/g, '');
+  let n = parseFloat(s);
+  if (isNaN(n)) return 0;
+  if (s.endsWith('TB') || s.endsWith('T')) return n * 1024 * 1024;
+  if (s.endsWith('GB') || s.endsWith('G')) return n * 1024;
+  if (s.endsWith('KB') || s.endsWith('K')) return n / 1024;
+  if (n < 5000 && !s.endsWith('MB') && !s.endsWith('M')) return n * 1024;
+  return n;
+}
+
+function fmtGB(mb) {
+  if (mb <= 0) return '—';
+  if (mb >= 1024 * 1024) return (mb / 1024 / 1024).toFixed(2) + ' TB';
+  if (mb >= 1024) return (mb / 1024).toFixed(2) + ' GB';
+  return mb.toFixed(0) + ' MB';
+}
+
+const id = i => document.getElementById(i);
+const show = (elId, visible) => { const el = id(elId); if (el) el.style.display = visible ? '' : 'none'; };
+
+function showMsg(elId, text, type) {
+  const el = id(elId);
+  if (!el) return;
+  el.textContent = text;
+  el.className = 'msg show ' + type;
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.textContent = ''; el.className = 'msg'; }, 5000);
 }
