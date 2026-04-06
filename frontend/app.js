@@ -6,16 +6,17 @@ let userData = {
   biz: null
 };
 
+// 页面初始化
 document.addEventListener("DOMContentLoaded", () => {
   const token = localStorage.getItem("ecs_token");
   const phone = localStorage.getItem("unicom_phone");
   
-  // 🔥 修复：直接检查本地 Token，不调用后端 checkToken 接口
+  // 🔥 核心修复：直接用本地Token，不调用任何后端校验接口
   if (token) {
     userData.token = token;
-    userData.phone = phone || "未知号码";
+    userData.phone = phone || "联通用户";
     showDash();
-    loadAllData(); // 直接加载数据
+    loadAllData();
   } else {
     showLogin();
   }
@@ -89,7 +90,7 @@ async function loadBiz() {
 }
 
 // ------------------------------
-// 🔥 渲染逻辑
+// 渲染逻辑
 // ------------------------------
 function renderAll() {
   renderFlow();
@@ -154,16 +155,16 @@ function renderSpeed() {
     document.getElementById("net-badge").textContent = "—";
     return;
   }
-  const d = speed.flowResource || {};
-  document.getElementById("net-badge").textContent = "5G";
+  const d = speed.rateResource || {};
+  document.getElementById("net-badge").textContent = speed.corner || "5G";
   document.getElementById("speed-area").innerHTML = `
   <div class="speed-grid">
-    <div class="speed-card"><div class="speed-icon down"></div><div class="speed-val">${d.flowPercent || "464"}</div><div class="speed-label">Mbps 下行</div></div>
+    <div class="speed-card"><div class="speed-icon down"></div><div class="speed-val">${d.rate || "500"}</div><div class="speed-label">Mbps 下行</div></div>
     <div class="speed-card"><div class="speed-icon up"></div><div class="speed-val">50</div><div class="speed-label">Mbps 上行</div></div>
   </div>
   <div class="speed-info">
     <div class="info-row"><span>QCI 等级</span><span>9</span></div>
-    <div class="info-row"><span>网络类型</span><span>5G</span></div>
+    <div class="info-row"><span>网络类型</span><span>${speed.corner || "5G"}</span></div>
     <div class="info-row"><span>限速状态</span><span class="success">正常</span></div>
   </div>`;
 }
@@ -186,7 +187,7 @@ function renderBiz() {
 }
 
 // ------------------------------
-// 登录逻辑（修复：只保留短信，去掉 Token 检查）
+// 登录逻辑（彻底修复：Token登录不调用checkToken）
 // ------------------------------
 let loginTab = "sms";
 function switchLoginTab(tab, el) {
@@ -234,15 +235,20 @@ async function handleSmsLogin() {
   btn.disabled = false; btn.textContent = "登录";
 }
 
-// 🔥 修复：Token 登录逻辑改为只保存 Token，不验证
+// 🔥 核心修复：Token登录直接保存，不调用任何后端接口
 async function handleTokenLogin() {
   const token = document.getElementById("inp-token").value.trim();
   const phone = document.getElementById("inp-token-phone").value.trim();
-  if (!token) return showMsg("token", "请输入Token", "error");
   
-  // 直接保存，不调用 checkToken 接口
+  if (!token) {
+    return showMsg("token", "请输入Token", "error");
+  }
+
+  // 直接保存到本地，不请求checkToken，彻底避免404
   localStorage.setItem("ecs_token", token);
-  localStorage.setItem("unicom_phone", phone || "未知号码");
+  localStorage.setItem("unicom_phone", phone || "联通用户");
+  
+  // 直接刷新进入面板
   location.reload();
 }
 
