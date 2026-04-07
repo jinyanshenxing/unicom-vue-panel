@@ -41,34 +41,26 @@ function showMsg(elId, text, type) {
   el._t = setTimeout(() => { el.textContent = ''; el.className = 'msg'; }, 5000);
 }
 
+// 解析 MB 数值，返回数字或 null（无法解析时）
 function parseMB(v) {
-  if (v === undefined || v === null || v === '') return null; // null = 未知/无限
-  if (typeof v === 'number') return v;
-  const s = String(v).trim().toUpperCase().replace(/,/g,'');
-  if (s === '' || s === '-' || s === 'UNLIMITED' || s === '无限') return null;
-  const n = parseFloat(s);
-  if (!Number.isFinite(n)) return null;
-  if (s.endsWith('TB') || s.endsWith('T')) return n * 1024 * 1024;
-  if (s.endsWith('GB') || s.endsWith('G')) return n * 1024;
-  if (s.endsWith('MB') || s.endsWith('M')) return n;
-  if (s.endsWith('KB') || s.endsWith('K')) return n / 1024;
-  return n; // 默认 MB
+  if (v === undefined || v === null) return null;
+  const n = parseFloat(String(v).replace(/,/g, ''));
+  return Number.isFinite(n) ? n : null;
 }
 
 function fmtFlow(mb) {
-  if (mb === null || mb === undefined || !Number.isFinite(mb)) return '无限';
+  if (mb === null || mb === undefined || !Number.isFinite(mb)) return '—';
   if (mb === 0) return '0 MB';
-  if (mb >= 1024 * 1024) return (mb / 1024 / 1024).toFixed(2) + ' TB';
-  if (mb >= 1024)        return (mb / 1024).toFixed(2) + ' GB';
+  if (Math.abs(mb) >= 1024 * 1024) return (mb / 1024 / 1024).toFixed(2) + ' TB';
+  if (Math.abs(mb) >= 1024)        return (mb / 1024).toFixed(2) + ' GB';
   return mb.toFixed(0) + ' MB';
 }
 
 function normalizeRate(v) {
   if (!v) return '—';
-  const s = String(v).trim();
-  const m = s.match(/([\d.]+)\s*([A-Za-z/]+)?/);
-  if (!m) return s;
-  const num = m[1], unit = (m[2] || 'Mbps');
+  const m = String(v).trim().match(/([\d.]+)\s*([A-Za-z/]+)?/);
+  if (!m) return v;
+  const num = m[1], unit = m[2] || 'Mbps';
   return /mbps/i.test(unit) ? num : `${num} ${unit}`;
 }
 
@@ -178,18 +170,33 @@ async function refreshAll() {
   btn.classList.remove('spinning');
 }
 
-/* ══════════════════════════════════════════════
+/* ══════════════════════════════════════════════════════
    FLOW
-   flowSumList 结构（已确认）：
-   [
-     { flowtype:"1", xcanusevalue:"4005.79", xusedvalue:"90.21" },   // 通用流量 MB
-     { flowtype:"2", xcanusevalue:"",        xusedvalue:"564808.17" } // 定向流量 MB，无上限
+   真实结构（已确认）：
+   resources: [
+     { type:"flow", details: [
+         { feePolicyName, flowType, total, use, remain, usedPercent, limited, endDate, ... }
+       ]
+     },
+     { type:"Voice", details:[...] },
+     { type:"smsList", details:[] }
    ]
-   规则：
-   - xcanusevalue 空字符串 → 无上限，parseMB 返回 null
-   - 汇总卡片只统计有上限（xcanusevalue 非空）的流量
-   - 定向流量只显示已用，不计入总量/使用率
-   ══════════════════════════════════════════════ */
+   flowSumList: [
+     { flowtype:"1", xcanusevalue:"4005.79", xusedvalue:"90.21" },   // 通用汇总 MB
+     { flowtype:"2", xcanusevalue:"0.00",    xusedvalue:"574808.19"} // 定向汇总 MB（xcanusevalue=0.00 → 无上限）
+   ]
+
+   detail 字段：
+     feePolicyName  → 名称
+     flowType       → "1"通用 "2"定向
+     total          → 总量 MB（"0.00" 且 flowType=2 → 无上限）
+     use            → 已用 MB
+     remain         → 剩余 MB（可能为负，定向免流超出不额外计费）
+     usedPercent    → 百分比字符串
+     limited        → "0"有限 "1"无限/定向
+     endDate        → 到期
+     hide           → 是否隐藏
+   ══════════════════════════════════════════════════════ */
 async function loadFlow() {
   try {
     const data = await api('/flow');
@@ -199,36 +206,22 @@ async function loadFlow() {
   }
 }
 
-const FLOW_TYPE_NAME = { '1':'通用流量', '2':'定向流量', '3':'其他流量' };
-
 function renderFlow(raw) {
-  const sumList = Array.isArray(raw.flowSumList) ? raw.flowSumList : [];
+  // ── 从 resources 里找 type=flow 的那组 ──
+  const flowResource = (raw.resources || []).find(r => r.type === 'flow');
+  const details = flowResource?.details || [];
 
-  // 解析每条流量记录
-  const flows = sumList.map(item => {
-    const totalMB = parseMB(item.xcanusevalue); // null = 无上限
-    const usedMB  = parseMB(item.xusedvalue) ?? 0;
-    const leftMB  = totalMB !== null ? Math.max(totalMB - usedMB, 0) : null;
-    const pct     = totalMB > 0 ? Math.round(usedMB / totalMB * 100) : 0;
-    return {
-      type    : item.flowtype,
-      name    : FLOW_TYPE_NAME[item.flowtype] || `流量 (${item.flowtype})`,
-      totalMB,   // null = 无上限
-      usedMB,
-      leftMB,    // null = 无上限
-      pct,
-      unlimited : totalMB === null,
-    };
-  });
+  // ── 从 flowSumList 拿汇总（通用流量） ──
+  const sumList = raw.flowSumList || raw.fresSumList || [];
+  const generalSum = sumList.find(s => s.flowtype === '1' || s.elemtype === '3' && s.flowtype === '1');
+  const directedSum = sumList.find(s => s.flowtype === '2');
 
-  // 汇总：只统计有上限的流量（通用流量）
-  const limited = flows.filter(f => !f.unlimited);
-  const sumTotal = limited.reduce((a, f) => a + (f.totalMB ?? 0), 0);
-  const sumUsed  = limited.reduce((a, f) => a + f.usedMB, 0);
-  const sumLeft  = limited.reduce((a, f) => a + (f.leftMB ?? 0), 0);
+  const sumTotal = parseMB(generalSum?.xcanusevalue) ?? 0;
+  const sumUsed  = parseMB(generalSum?.xusedvalue)  ?? 0;
+  const sumLeft  = Math.max(sumTotal - sumUsed, 0);
   const sumPct   = sumTotal > 0 ? Math.round(sumUsed / sumTotal * 100) : 0;
 
-  // 更新顶部卡片（只反映有上限流量）
+  // ── 顶部卡片：只展示通用流量汇总 ──
   id('s-remain').textContent = fmtFlow(sumLeft);
   id('s-used').textContent   = fmtFlow(sumUsed);
   id('s-total').textContent  = fmtFlow(sumTotal);
@@ -240,64 +233,95 @@ function renderFlow(raw) {
   bar.style.width      = Math.min(sumPct, 100) + '%';
   bar.style.background = sumPct > 85 ? '#dc2626' : sumPct > 60 ? '#d97706' : '#2563eb';
 
-  // 渲染每条流量
-  if (!flows.length) {
-    id('pkg-list').innerHTML = '<div class="empty-tip">暂无流量数据</div>';
+  if (!details.length) {
+    id('pkg-list').innerHTML = '<div class="empty-tip">暂无流量包明细</div>';
     return;
   }
 
-  id('pkg-list').innerHTML = flows.map(f => renderFlowItem(f)).join('');
+  // ── 分组：通用(flowType=1) / 定向(flowType=2) ──
+  const general  = details.filter(d => d.flowType === '1' && !d.hide);
+  const directed = details.filter(d => d.flowType === '2' && !d.hide);
+
+  let html = '';
+
+  // 通用流量组
+  if (general.length) {
+    html += `<div class="flow-section-header">
+      <span class="flow-dot dot-blue"></span>通用流量
+    </div>`;
+    html += general.map(d => renderDetail(d, false)).join('');
+  }
+
+  // 定向流量组
+  if (directed.length) {
+    const dirUsedMB = parseMB(directedSum?.xusedvalue) ?? 0;
+    html += `<div class="flow-section-header" style="margin-top:4px">
+      <span class="flow-dot dot-amber"></span>定向流量
+      <span class="mini-tag amber">无上限</span>
+      <span style="margin-left:auto;font-size:11px;font-weight:400;color:var(--text-3)">当月已用 ${fmtFlow(dirUsedMB)}</span>
+    </div>`;
+    html += directed.map(d => renderDetail(d, true)).join('');
+  }
+
+  id('pkg-list').innerHTML = html;
 }
 
-function renderFlowItem(f) {
-  if (f.unlimited) {
-    // 无上限：只显示已用，不显示进度条和百分比
-    return `<div class="pkg-item">
+function renderDetail(d, isDirected) {
+  const name    = d.feePolicyName || d.addUpItemName || '流量包';
+  const totalMB = parseMB(d.total);
+  const usedMB  = parseMB(d.use)    ?? 0;
+  const remainMB= parseMB(d.remain) ?? 0;
+  const pct     = parseInt(d.usedPercent, 10) || (totalMB > 0 ? Math.round(usedMB / totalMB * 100) : 0);
+  const endDate = (d.endDate === '长期有效' || !d.endDate) ? '' : d.endDate;
+
+  // 定向免流：total=0 表示无上限，limited=1 也表示无上限定向
+  const unlimited = isDirected && (totalMB === 0 || totalMB === null || d.limited === '1');
+
+  if (unlimited) {
+    return `<div class="pkg-item pkg-item--directed">
       <div class="pkg-left">
-        <div class="pkg-name">
-          <span class="flow-dot dot-amber"></span>${esc(f.name)}
-          <span class="mini-tag amber">无上限</span>
+        <div class="pkg-name">${esc(name)}</div>
+        <div class="pkg-expire">${endDate || '长期有效'}</div>
+        <div class="mini-bar-bg" style="width:100px">
+          <div class="mini-bar" style="width:100%;background:var(--amber-txt);opacity:.3"></div>
         </div>
-        <div class="pkg-expire">当月已用</div>
-        <div class="mini-bar-bg"><div class="mini-bar" style="width:0%"></div></div>
       </div>
       <div class="pkg-right">
-        <div class="pkg-remain">${fmtFlow(f.usedMB)}</div>
-        <div class="pkg-of">不限总量</div>
-        <span class="pkg-pct blue">无限制</span>
+        <div class="pkg-remain" style="color:var(--text-2)">${fmtFlow(usedMB)}</div>
+        <div class="pkg-of">已用 / 无上限</div>
+        <span class="pkg-pct blue">免流</span>
       </div>
     </div>`;
   }
 
-  const cls      = f.pct > 85 ? 'red' : f.pct > 60 ? 'amber' : 'green';
-  const dotCls   = f.pct > 85 ? 'dot-red' : f.pct > 60 ? 'dot-amber' : 'dot-green';
-  const barColor = f.pct > 85 ? '#dc2626' : f.pct > 60 ? '#d97706' : '#2563eb';
+  // 有上限流量包
+  const cls      = pct >= 100 ? 'red' : pct > 85 ? 'red' : pct > 60 ? 'amber' : 'green';
+  const barColor = pct >= 100 ? '#dc2626' : pct > 85 ? '#dc2626' : pct > 60 ? '#d97706' : '#2563eb';
+  const leftMB   = Math.max(remainMB, 0); // remain 可能为负（超额），显示 0
 
   return `<div class="pkg-item">
     <div class="pkg-left">
-      <div class="pkg-name">
-        <span class="flow-dot ${dotCls}"></span>${esc(f.name)}
-      </div>
-      <div class="pkg-expire">&nbsp;</div>
+      <div class="pkg-name">${esc(name)}</div>
+      <div class="pkg-expire">${endDate || '长期有效'}</div>
       <div class="mini-bar-bg">
-        <div class="mini-bar" style="width:${Math.min(f.pct,100)}%;background:${barColor}"></div>
+        <div class="mini-bar" style="width:${Math.min(pct, 100)}%;background:${barColor}"></div>
       </div>
     </div>
     <div class="pkg-right">
-      <div class="pkg-remain">${fmtFlow(f.leftMB)}</div>
-      <div class="pkg-of">/ ${fmtFlow(f.totalMB)}</div>
-      <span class="pkg-pct ${cls}">已用 ${f.pct}%</span>
+      <div class="pkg-remain">${fmtFlow(leftMB)}</div>
+      <div class="pkg-of">/ ${fmtFlow(totalMB)}</div>
+      <span class="pkg-pct ${cls}">已用 ${pct}%</span>
     </div>
   </div>`;
 }
 
-/* ══════════════════════════════════════════════
-   SPEED
+/* ══════════════════════════════════════════════════════
+   SPEED  （字段已确认）
    rateResource.rate = "500Mbps"
-   flowResource.flowPersent = "524.78" (GB)
+   flowResource.flowPersent = "524.78" GB
    terminalResource.terminal = "5G"
    networkSwitchResource.state = "1"
-   ══════════════════════════════════════════════ */
+   ══════════════════════════════════════════════════════ */
 async function loadSpeed() {
   try {
     const data = await api('/speed');
@@ -308,10 +332,10 @@ async function loadSpeed() {
 }
 
 function renderSpeed(raw) {
-  const fr  = raw.flowResource           || {};
-  const rr  = raw.rateResource           || {};
-  const nsr = raw.networkSwitchResource  || {};
-  const tr  = raw.terminalResource       || {};
+  const fr  = raw.flowResource          || {};
+  const rr  = raw.rateResource          || {};
+  const nsr = raw.networkSwitchResource || {};
+  const tr  = raw.terminalResource      || {};
 
   const down    = normalizeRate(rr.rate || fr.rate);
   const up      = normalizeRate(rr.upRate || raw.upRate || '');
@@ -339,17 +363,17 @@ function renderSpeed(raw) {
       ${row('终端类型', esc(netType))}
       ${row('5G 覆盖', has5G ? '<span class="pkg-pct green">已覆盖</span>' : '<span class="pkg-pct amber">未检测</span>')}
       ${row('限速状态', isWarn ? '<span class="pkg-pct amber">已限速</span>' : '<span class="pkg-pct green">正常</span>')}
-      ${usedGB > 0 ? row('当月用量', usedGB.toFixed(2) + ' GB') : ''}
+      ${usedGB > 0 ? row('当月总用量', usedGB.toFixed(2) + ' GB') : ''}
       ${mobile ? row('号码', esc(mobile)) : ''}
     </div>`;
 }
 
-/* ══════════════════════════════════════════════
-   BIZ
+/* ══════════════════════════════════════════════════════
+   BIZ  （字段已确认）
    data.mainProductInfo  → 主套餐
-   data.otherProductInfo → 其他业务（isSubprodInfo=true 为子产品，折叠显示）
-   cancelFlag: "0"=正常, "4"=待生效, "1"=已退订
-   ══════════════════════════════════════════════ */
+   data.otherProductInfo → 其他（isSubprodInfo=true 为子产品）
+   cancelFlag: "0"正常 "4"待生效 "1"已退订
+   ══════════════════════════════════════════════════════ */
 async function loadBiz() {
   try {
     const data = await api('/biz');
@@ -364,40 +388,27 @@ function renderBiz(raw) {
   const main  = Array.isArray(d.mainProductInfo)  ? d.mainProductInfo  : [];
   const other = Array.isArray(d.otherProductInfo) ? d.otherProductInfo : [];
 
-  // 主条目：排除 isSubprodInfo=true
-  const items = [
-    ...main,
-    ...other.filter(b => b.isSubprodInfo !== 'true'),
-  ];
+  const items = [...main, ...other.filter(b => b.isSubprodInfo !== 'true')];
+  const subs  = other.filter(b => b.isSubprodInfo === 'true').map(b => b.productName || '');
 
-  // 子产品归属到父 productId（这里 otherProductInfo 里所有 isSubprodInfo=true 的项统一放在第一个主套餐下）
-  const subs = other.filter(b => b.isSubprodInfo === 'true').map(b => b.productName || '');
-
-  const statusTag = flag => {
-    const map = { '0':'<span class="pkg-pct green">正常</span>', '4':'<span class="pkg-pct blue">待生效</span>', '1':'<span class="pkg-pct red">已退订</span>' };
-    return map[flag] || '';
-  };
+  const statusTag = flag => ({ '0':'<span class="pkg-pct green">正常</span>', '4':'<span class="pkg-pct blue">待生效</span>', '1':'<span class="pkg-pct red">已退订</span>' }[flag] || '');
 
   id('biz-count').textContent = items.length ? items.length + ' 项' : '';
-
   if (!items.length) { id('biz-area').innerHTML = '<div class="empty-tip">暂无已订业务</div>'; return; }
 
   id('biz-area').innerHTML = items.map((b, idx) => {
     const name  = b.productName || b.serviceName || b.name || '业务';
     const fee   = b.productFee  || b.price || b.fee || '';
     const start = (b.startDate || b.subscribeDate || b.createDate || '').slice(0,10);
-    const end   = (b.endDate   || '').slice(0,10);
+    const end   = (b.endDate || '').slice(0,10);
     const stag  = statusTag(b.cancelFlag || b.orderStatus);
-    // 子产品只挂在第一个主条目下
     const showSubs = idx === 0 && subs.length > 0;
 
     return `<div class="biz-item">
       <div style="flex:1;min-width:0">
         <div class="biz-name">${esc(name)} ${stag}</div>
-        <div class="biz-date">
-          ${start ? '订购 ' + start : ''}${end ? ' · 到期 ' + end : ''}
-        </div>
-        ${showSubs ? `<div class="biz-subs">${subs.map(s=>`<span>${esc(s)}</span>`).join('')}</div>` : ''}
+        <div class="biz-date">${start ? '订购 ' + start : ''}${end ? ' · 到期 ' + end : ''}</div>
+        ${showSubs ? `<div class="biz-subs">${subs.map(s => `<span>${esc(s)}</span>`).join('')}</div>` : ''}
       </div>
       <div class="biz-price">${fee ? '¥' + esc(String(fee)) + '/月' : '免费'}</div>
     </div>`;

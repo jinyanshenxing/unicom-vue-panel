@@ -204,3 +204,30 @@ textarea { resize: vertical; }
   .summary-val { font-size: 18px; }
   .mini-bar-bg { width: 100px; }
 }
+
+/* ── Directed flow item variant ── */
+.pkg-item--directed {
+  background: var(--bg-surface);
+  border-radius: var(--radius-sm);
+  padding: 9px 12px;
+  margin: 3px 0;
+  border-top: none !important;
+}
+.pkg-item--directed .pkg-name { color: var(--text-2); font-weight: 500; }
+.pkg-item--directed .pkg-remain { font-size: 14px; }
+.pkg-item--directed .pkg-of { color: var(--text-3); }
+
+/* ── Flow section header ── */
+.flow-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  padding: 14px 0 6px;
+  border-top: 1px solid var(--border);
+}
+.flow-section-header:first-child { border-top: none; padding-top: 2px; }
