@@ -12,69 +12,56 @@ on:
   workflow_dispatch:
 
 env:
-  # GitHub Container Registry
+  IMAGE_NAME: unicom-panel
   GHCR_IMAGE: ghcr.io/${{ github.repository_owner }}/unicom-panel
-  # Docker Hub（需要在 Secrets 配置 DOCKERHUB_USERNAME / DOCKERHUB_TOKEN）
-  DOCKERHUB_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/unicom-panel
+  DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
 
 jobs:
-  build-and-push:
-    name: Build & Push
+  docker:
     runs-on: ubuntu-latest
+
     permissions:
       contents: read
-      packages: write    # 允许推送到 GHCR
+      packages: write
 
     steps:
-      # 1. 拉取代码
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      # 2. 设置 QEMU（支持多平台构建 arm64 / amd64）
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
-      # 3. 设置 Buildx
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # 4. 登录 GitHub Container Registry
       - name: Log in to GHCR
+        if: ${{ github.event_name != 'pull_request' }}
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 5. 登录 Docker Hub（可选，如果没有配置 Secrets 就跳过）
       - name: Log in to Docker Hub
-        if: ${{ secrets.DOCKERHUB_USERNAME != '' }}
+        if: ${{ github.event_name != 'pull_request' && env.DOCKERHUB_USERNAME != '' }}
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          username: ${{ env.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # 6. 提取镜像标签元数据
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: |
             ${{ env.GHCR_IMAGE }}
-            ${{ secrets.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_IMAGE || '' }}
           tags: |
-            # main 分支 → latest
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-            # Tag 推送 → v1.2.3  +  1.2.3  +  1.2
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            # PR → pr-123
+            type=ref,event=branch
             type=ref,event=pr
-            # 每次构建带上 commit sha（短）
-            type=sha,prefix=sha-,format=short
+            type=ref,event=tag
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
-      # 7. 构建并推送（多平台：amd64 + arm64）
-      - name: Build and push
+      - name: Build and push GHCR
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -83,10 +70,27 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # 使用 GitHub Actions 缓存加速构建
-          cache-from: type=gha
-          cache-to:   type=gha,mode=max
 
-      # 8. 输出镜像摘要
-      - name: Image digest
-        run: echo "✅ Image digest → ${{ steps.build-and-push.outputs.digest }}"
+      - name: Extract Docker Hub metadata
+        if: ${{ env.DOCKERHUB_USERNAME != '' }}
+        id: meta_dockerhub
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.DOCKERHUB_USERNAME }}/unicom-panel
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=ref,event=tag
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build and push Docker Hub
+        if: ${{ github.event_name != 'pull_request' && env.DOCKERHUB_USERNAME != '' }}
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta_dockerhub.outputs.tags }}
+          labels: ${{ steps.meta_dockerhub.outputs.labels }}
