@@ -1,26 +1,44 @@
-# ---------- 构建前端 ----------
-FROM node:20-alpine AS web-builder
-WORKDIR /app/web
+# ─────────────────────────────────────────────
+# Stage 1 — 汇总阶段（把前端放到 backend/public）
+# ─────────────────────────────────────────────
+FROM node:20-alpine AS assembler
 
-COPY web/package*.json ./
-RUN npm install
+WORKDIR /app
 
-COPY web/ ./
-RUN npm run build
+# 复制后端代码
+COPY backend/package.json ./package.json
+COPY backend/server.js    ./server.js
 
-# ---------- 构建后端 ----------
-FROM node:20-alpine AS app
-WORKDIR /app/server
+# 复制前端静态文件到 public/
+COPY frontend/             ./public/
 
-COPY server/package*.json ./
-RUN npm install --omit=dev
+# ─────────────────────────────────────────────
+# Stage 2 — 运行阶段（精简镜像）
+# ─────────────────────────────────────────────
+FROM node:20-alpine AS runner
 
-COPY server/ ./
+LABEL org.opencontainers.image.title="unicom-panel"
+LABEL org.opencontainers.image.description="联通流量余量面板"
+LABEL org.opencontainers.image.source="https://github.com/YOUR_USERNAME/unicom-panel"
+LABEL org.opencontainers.image.licenses="MIT"
 
-# 复制前端构建产物
-COPY --from=web-builder /app/web/dist ./public
+WORKDIR /app
+
+# 创建非 root 用户
+RUN addgroup -g 1001 -S appgroup && \
+    adduser  -u 1001 -S appuser -G appgroup
+
+# 从 assembler 阶段复制完整应用
+COPY --from=assembler --chown=appuser:appgroup /app ./
+
+USER appuser
 
 EXPOSE 3000
 
-ENV PORT=3000
-CMD ["node", "index.js"]
+ENV PORT=3000 \
+    NODE_ENV=production
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -qO- http://localhost:3000/ > /dev/null || exit 1
+
+CMD ["node", "server.js"]
