@@ -1,28 +1,27 @@
-# ===== 构建阶段 =====
-FROM node:20-alpine AS builder
+# ---------- 构建前端 ----------
+FROM node:20-alpine AS web-builder
+WORKDIR /app/web
 
-WORKDIR /app
-
-COPY package*.json ./
+COPY web/package*.json ./
 RUN npm install
 
-COPY . .
+COPY web/ ./
 RUN npm run build
 
-# ===== 运行阶段 =====
-FROM node:20-alpine
-
+# ---------- 构建后端 ----------
+FROM node:20-alpine AS app
 WORKDIR /app
 
-ENV NODE_ENV=production
-ENV PORT=3000
+COPY server/package*.json ./server/
+WORKDIR /app/server
+RUN npm install --production
 
-COPY package*.json ./
-RUN npm install --omit=dev
+COPY server/ ./
 
-COPY --from=builder /app/dist ./dist
-COPY server.js ./server.js
+# 复制前端构建产物到后端静态目录
+COPY --from=web-builder /app/web/dist ./public
 
 EXPOSE 3000
 
-CMD ["node", "server.js"]
+ENV PORT=3000
+CMD ["node", "index.js"]
