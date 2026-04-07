@@ -7,69 +7,63 @@
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
-  <div class="page">
-    <header class="topbar">
-      <div class="brand">联通余量面板</div>
-      <div class="topbar-right">
-        <span class="login-badge">已登录</span>
-        <button class="btn-logout" id="btn-logout">退出</button>
+  <header class="header">
+    <div class="header-inner">
+      <div class="logo">联通余量面板</div>
+      <div class="header-right" id="header-user">
+        <span class="phone-tag" id="header-phone">已登录</span>
+        <button id="btn-logout">退出</button>
       </div>
-    </header>
+    </div>
+  </header>
 
-    <main class="container">
+  <main class="page-dash" id="page-dash">
+    <div class="container">
+
       <!-- 顶部统计卡片 -->
       <section class="summary-grid">
         <div class="summary-card">
-          <div class="summary-top">
-            <div class="summary-val" id="s-remain">—</div>
-            <div class="summary-label">剩余流量</div>
-          </div>
-          <div class="card-progress">
-            <div class="card-progress-bar is-blue" id="s-remain-bar"></div>
+          <div class="summary-val" id="s-remain">—</div>
+          <div class="summary-label">剩余流量</div>
+          <div class="summary-progress">
+            <div class="summary-progress-bar blue" id="s-remain-bar"></div>
           </div>
         </div>
 
         <div class="summary-card">
-          <div class="summary-top">
-            <div class="summary-val" id="s-used">—</div>
-            <div class="summary-label">已用流量</div>
-          </div>
-          <div class="card-progress">
-            <div class="card-progress-bar is-amber" id="s-used-bar"></div>
+          <div class="summary-val" id="s-used">—</div>
+          <div class="summary-label">已用流量</div>
+          <div class="summary-progress">
+            <div class="summary-progress-bar amber" id="s-used-bar"></div>
           </div>
         </div>
 
         <div class="summary-card">
-          <div class="summary-top">
-            <div class="summary-val" id="s-total">—</div>
-            <div class="summary-label">套餐总量</div>
-          </div>
-          <div class="card-progress">
-            <div class="card-progress-bar is-gray" id="s-total-bar"></div>
+          <div class="summary-val" id="s-total">—</div>
+          <div class="summary-label">套餐总量</div>
+          <div class="summary-progress">
+            <div class="summary-progress-bar gray" id="s-total-bar"></div>
           </div>
         </div>
 
-        <div class="summary-card summary-card--highlight">
-          <div class="summary-fill" id="s-pct-fill"></div>
-          <div class="summary-top">
-            <div class="summary-val" id="s-pct">—</div>
-            <div class="summary-label">使用率</div>
-          </div>
-          <div class="card-progress">
-            <div class="card-progress-bar" id="s-pct-bar"></div>
+        <div class="summary-card accent">
+          <div class="summary-val" id="s-pct">—</div>
+          <div class="summary-label">使用率</div>
+          <div class="summary-progress">
+            <div class="summary-progress-bar" id="s-pct-bar"></div>
           </div>
         </div>
       </section>
 
       <!-- 流量余量 -->
       <section class="card">
-        <div class="card-header">
-          <div class="card-title">流量余量</div>
-          <button class="btn-refresh" id="btn-refresh">刷新</button>
+        <div class="card-head">
+          <h3>流量余量</h3>
+          <button id="btn-refresh">刷新</button>
         </div>
 
         <div class="big-progress">
-          <div class="big-progress-bg">
+          <div class="big-progress-track">
             <div class="big-progress-bar" id="main-bar"></div>
           </div>
           <div class="big-progress-meta">
@@ -81,24 +75,23 @@
         <div id="pkg-list">加载中...</div>
       </section>
 
-      <!-- 下方占位卡片 -->
-      <section class="bottom-grid">
+      <section class="grid-2">
         <div class="card">
-          <div class="card-header">
-            <div class="card-title">速率 & QCI</div>
+          <div class="card-head">
+            <h3>速率 & QCI</h3>
           </div>
-          <div class="placeholder">查询中...</div>
+          <div>查询中...</div>
         </div>
 
         <div class="card">
-          <div class="card-header">
-            <div class="card-title">已订业务</div>
+          <div class="card-head">
+            <h3>已订业务</h3>
           </div>
-          <div class="placeholder">查询中...</div>
+          <div>查询中...</div>
         </div>
       </section>
-    </main>
-  </div>
+    </div>
+  </main>
 
   <script src="./app.js"></script>
 </body>
