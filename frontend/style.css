@@ -231,3 +231,25 @@ textarea { resize: vertical; }
   border-top: 1px solid var(--border);
 }
 .flow-section-header:first-child { border-top: none; padding-top: 2px; }
+
+/* 套餐名称卡片 */
+.package-name-card {
+  text-align: center;
+}
+
+/* 语音卡片优化 */
+#voice-card .pkg-remain {
+  color: var(--green-txt);
+}
+
+/* 折叠业务优化 */
+details summary {
+  list-style: none;
+}
+details summary::-webkit-details-marker {
+  display: none;
+}
+details[open] summary {
+  color: var(--text);
+  font-weight: 500;
+}

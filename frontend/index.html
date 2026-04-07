@@ -29,7 +29,7 @@
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 6l5 5 5-5 5 5 5-5"/><path d="M1 12l5 5 5-5 5 5 5-5"/></svg>
         </div>
         <h1 class="login-title">联通余量面板</h1>
-        <p class="login-sub">流量 · 速率 · 套餐查询</p>
+        <p class="login-sub">流量 · 语音 · 速率 · 套餐查询</p>
 
         <div class="tab-switch">
           <button class="tab-btn active" onclick="switchLoginTab('sms', this)">短信验证码</button>
@@ -81,7 +81,14 @@
     <main id="page-dash" style="display:none" class="page-dash">
       <div class="container">
 
-        <!-- 顶部汇总卡片 -->
+        <!-- 套餐名称（只显示一次） -->
+        <div id="package-name-display" class="package-name-card" style="display:none; margin-bottom:16px;">
+          <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); padding:14px 18px; text-align:center; font-size:15.5px; font-weight:600; color:var(--text);">
+            当前套餐：<span id="main-package-name" style="color:var(--blue-txt);"></span>
+          </div>
+        </div>
+
+        <!-- 顶部汇总卡片（流量） -->
         <div class="summary-grid">
           <div class="summary-card">
             <div class="summary-val" id="s-remain">—</div>
@@ -104,7 +111,7 @@
         <!-- 流量进度 + 分包 -->
         <div class="card">
           <div class="card-header">
-            <span class="card-title">流量余量</span>
+            <span class="card-title">📶 流量使用情况</span>
             <button class="btn-refresh" id="btn-refresh" onclick="refreshAll()">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
               刷新
@@ -134,15 +141,30 @@
             </div>
           </div>
 
-          <!-- 已订业务 -->
-          <div class="card">
+          <!-- 语音使用情况（新增） -->
+          <div class="card" id="voice-card" style="display:none">
             <div class="card-header">
-              <span class="card-title">已订业务</span>
-              <span class="count-badge" id="biz-count"></span>
+              <span class="card-title">📞 语音使用情况</span>
             </div>
-            <div id="biz-area">
+            <div id="voice-area">
               <div class="loading-row"><div class="spinner"></div>查询中...</div>
             </div>
+          </div>
+
+          <!-- 已订业务（折叠） -->
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">📋 已订业务</span>
+              <span class="count-badge" id="biz-count"></span>
+            </div>
+            <details id="biz-details">
+              <summary style="cursor:pointer; padding:10px 0; font-size:13.5px; color:var(--text-2); user-select:none;">
+                点击展开查看已订业务
+              </summary>
+              <div id="biz-area" style="padding-top:8px;">
+                <div class="loading-row"><div class="spinner"></div>查询中...</div>
+              </div>
+            </details>
           </div>
         </div>
 
