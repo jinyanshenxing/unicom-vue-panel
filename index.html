@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>联通查询面板</title>
+<style>
+  :root {
+    --bg: #0d0d0f;
+    --bg2: #16161a;
+    --bg3: #1e1e25;
+    --card: #1a1a22;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.13);
+    --text: #f0f0f5;
+    --text2: #8888a0;
+    --text3: #55556a;
+    --red: #e0413a;
+    --red-dim: rgba(224,65,58,0.12);
+    --green: #3adb7a;
+    --green-dim: rgba(58,219,122,0.10);
+    --blue: #4a9eff;
+    --blue-dim: rgba(74,158,255,0.10);
+    --amber: #f5a623;
+    --amber-dim: rgba(245,166,35,0.10);
+    --radius: 12px;
+    --radius-sm: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+    min-height: 100vh;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  /* Layout */
+  .app { display: flex; flex-direction: column; min-height: 100vh; }
+  .header {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .logo-icon {
+    width: 28px; height: 28px;
+    background: var(--red);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+    font-weight: 700;
+    color: #fff;
+  }
+  .theme-btn {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text2);
+    border-radius: var(--radius-sm);
+    padding: 6px 14px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s;
+  }
+  .theme-btn:hover { border-color: var(--border2); color: var(--text); }
+
+  .main {
+    flex: 1;
+    padding: 32px 24px;
+    max-width: 960px;
+    margin: 0 auto;
+    width: 100%;
+  }
+
+  /* Cards */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px 24px;
+    margin-bottom: 16px;
+  }
+  .card-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text2);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card-title .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--red);
+    display: inline-block;
+  }
+
+  /* Tabs */
+  .tabs {
+    display: flex;
+    gap: 4px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 4px;
+    margin-bottom: 20px;
+  }
+  .tab {
+    flex: 1;
+    padding: 8px 0;
+    text-align: center;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text2);
+    transition: all 0.2s;
+    border: none;
+    background: transparent;
+  }
+  .tab.active {
+    background: var(--bg3);
+    color: var(--text);
+    border: 1px solid var(--border2);
+  }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* Form */
+  .form-group { margin-bottom: 14px; }
+  label { display: block; font-size: 12px; color: var(--text2); margin-bottom: 6px; letter-spacing: 0.04em; }
+  input[type=text], input[type=tel], input[type=password] {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    color: var(--text);
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+    font-family: inherit;
+  }
+  input:focus { border-color: var(--red); }
+  input::placeholder { color: var(--text3); }
+
+  /* Buttons */
+  .btn {
+    border-radius: var(--radius-sm);
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    transition: all 0.18s;
+    font-family: inherit;
+  }
+  .btn-primary {
+    background: var(--red);
+    color: #fff;
+  }
+  .btn-primary:hover { opacity: 0.88; }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-outline {
+    background: transparent;
+    color: var(--text2);
+    border: 1px solid var(--border2);
+  }
+  .btn-outline:hover { color: var(--text); border-color: var(--border2); background: var(--bg3); }
+  .btn-sm { padding: 7px 14px; font-size: 12px; }
+  .btn-full { width: 100%; }
+
+  .sms-row { display: flex; gap: 10px; }
+  .sms-row input { flex: 1; }
+
+  /* Status badge */
+  .badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 500;
+  }
+  .badge-green { background: var(--green-dim); color: var(--green); }
+  .badge-red { background: var(--red-dim); color: var(--red); }
+  .badge-blue { background: var(--blue-dim); color: var(--blue); }
+  .badge-amber { background: var(--amber-dim); color: var(--amber); }
+
+  /* Info grid */
+  .info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+    margin-top: 4px;
+  }
+  .info-item {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 14px 16px;
+  }
+  .info-label { font-size: 11px; color: var(--text3); letter-spacing: 0.05em; margin-bottom: 6px; }
+  .info-value { font-size: 18px; font-weight: 600; color: var(--text); }
+  .info-unit { font-size: 12px; font-weight: 400; color: var(--text2); margin-left: 4px; }
+
+  /* Progress bar */
+  .progress-wrap { margin-top: 8px; }
+  .progress-bar {
+    height: 6px;
+    background: var(--bg3);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-top: 6px;
+  }
+  .progress-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: var(--red);
+    transition: width 0.6s ease;
+  }
+  .progress-fill.green { background: var(--green); }
+  .progress-label {
+    display: flex; justify-content: space-between;
+    font-size: 11px; color: var(--text3); margin-top: 4px;
+  }
+
+  /* Package list */
+  .pkg-list { display: flex; flex-direction: column; gap: 10px; }
+  .pkg-item {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 14px 16px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .pkg-name { font-size: 14px; color: var(--text); margin-bottom: 4px; }
+  .pkg-meta { font-size: 12px; color: var(--text3); }
+  .pkg-price { font-size: 16px; font-weight: 600; color: var(--amber); white-space: nowrap; }
+
+  /* Alert / Toast */
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: var(--radius-sm);
+    padding: 10px 20px;
+    font-size: 13px;
+    color: var(--text);
+    z-index: 9999;
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+  .toast.show { opacity: 1; }
+  .toast.error { border-color: var(--red); color: var(--red); }
+  .toast.success { border-color: var(--green); color: var(--green); }
+
+  /* Loading */
+  .spinner {
+    display: inline-block; width: 16px; height: 16px;
+    border: 2px solid rgba(255,255,255,0.15);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+    vertical-align: middle; margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .section-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 14px;
+  }
+
+  /* QCI chip */
+  .qci-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--blue-dim);
+    border: 1px solid rgba(74,158,255,0.2);
+    color: var(--blue);
+    border-radius: 20px;
+    padding: 4px 14px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  /* Speed */
+  .speed-display {
+    display: flex; align-items: baseline; gap: 8px;
+  }
+  .speed-num { font-size: 36px; font-weight: 700; color: var(--text); }
+  .speed-unit { font-size: 14px; color: var(--text2); }
+
+  /* Light mode */
+  body.light {
+    --bg: #f5f5f7;
+    --bg2: #ffffff;
+    --bg3: #eaeaec;
+    --card: #ffffff;
+    --border: rgba(0,0,0,0.07);
+    --border2: rgba(0,0,0,0.13);
+    --text: #111118;
+    --text2: #55556a;
+    --text3: #aaaabc;
+    --red-dim: rgba(224,65,58,0.08);
+    --green-dim: rgba(30,190,100,0.08);
+    --blue-dim: rgba(0,100,220,0.08);
+    --amber-dim: rgba(200,130,0,0.08);
+    --blue: #0066cc;
+    --green: #1eb864;
+    --amber: #b87800;
+  }
+
+  .empty { text-align: center; color: var(--text3); padding: 32px 0; font-size: 14px; }
+  .divider { height: 1px; background: var(--border); margin: 16px 0; }
+
+  .login-status {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 16px;
+    background: var(--green-dim);
+    border: 1px solid rgba(58,219,122,0.15);
+    border-radius: var(--radius-sm);
+    margin-bottom: 16px;
+    font-size: 13px;
+    color: var(--green);
+  }
+  .logout-btn {
+    margin-left: auto;
+    background: transparent;
+    border: 1px solid rgba(58,219,122,0.3);
+    color: var(--green);
+    border-radius: 6px;
+    padding: 3px 10px;
+    cursor: pointer;
+    font-size: 12px;
+    font-family: inherit;
+  }
+
+  @media (max-width: 600px) {
+    .main { padding: 20px 14px; }
+    .header { padding: 0 14px; }
+    .info-grid { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header class="header">
+    <div class="logo">
+      <div class="logo-icon">联</div>
+      联通查询面板
+    </div>
+    <button class="theme-btn" onclick="toggleTheme()">🌙 夜间模式</button>
+  </header>
+
+  <main class="main">
+
+    <!-- Login Status Bar -->
+    <div class="login-status" id="loginStatus" style="display:none">
+      <span>✓ 已登录：<strong id="loginPhone"></strong></span>
+      <button class="logout-btn" onclick="logout()">退出</button>
+    </div>
+
+    <!-- Login Card -->
+    <div class="card" id="loginCard">
+      <div class="card-title"><span class="dot"></span>账号登录</div>
+
+      <div class="tabs">
+        <button class="tab active" onclick="switchTab(0)">短信验证码</button>
+        <button class="tab" onclick="switchTab(1)">ECS Token</button>
+      </div>
+
+      <!-- SMS Login -->
+      <div class="tab-panel active" id="panel-sms">
+        <div class="form-group">
+          <label>手机号码</label>
+          <input type="tel" id="phone" placeholder="请输入联通手机号" maxlength="11" />
+        </div>
+        <div class="form-group">
+          <label>短信验证码</label>
+          <div class="sms-row">
+            <input type="text" id="smsCode" placeholder="输入验证码" maxlength="6" />
+            <button class="btn btn-outline btn-sm" id="sendSmsBtn" onclick="sendSms()">发送验证码</button>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-full" onclick="loginSms()">登录</button>
+      </div>
+
+      <!-- ECS Token Login -->
+      <div class="tab-panel" id="panel-ecs">
+        <div class="form-group">
+          <label>ECS Token</label>
+          <input type="text" id="ecsToken" placeholder="请输入 ecs_token（可从 Cookie 中获取）" />
+        </div>
+        <div class="form-group">
+          <label>手机号（用于显示）</label>
+          <input type="tel" id="ecsPhone" placeholder="可选，用于显示当前账号" />
+        </div>
+        <button class="btn btn-primary btn-full" onclick="loginEcs()">使用 Token 登录</button>
+      </div>
+    </div>
+
+    <!-- Query Panel -->
+    <div id="queryPanel" style="display:none">
+
+      <!-- Speed & QCI -->
+      <div class="card">
+        <div class="section-header">
+          <div class="card-title" style="margin:0"><span class="dot"></span>5G 速率 & QCI</div>
+          <button class="btn btn-outline btn-sm" onclick="querySpeed()">查询</button>
+        </div>
+        <div id="speedResult">
+          <div class="empty">点击查询获取速率信息</div>
+        </div>
+      </div>
+
+      <!-- Flow Info -->
+      <div class="card">
+        <div class="section-header">
+          <div class="card-title" style="margin:0"><span class="dot"></span>流量余量</div>
+          <button class="btn btn-outline btn-sm" onclick="queryFlow()">查询</button>
+        </div>
+        <div id="flowResult">
+          <div class="empty">点击查询获取流量余量</div>
+        </div>
+      </div>
+
+      <!-- Hidden Packages -->
+      <div class="card">
+        <div class="section-header">
+          <div class="card-title" style="margin:0"><span class="dot"></span>已订业务（含隐藏包）</div>
+          <button class="btn btn-outline btn-sm" onclick="queryPackages()">查询</button>
+        </div>
+        <div id="pkgResult">
+          <div class="empty">点击查询获取所有已订业务</div>
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ─── Config ───────────────────────────────────────────────────────────────────
+const API = ''  // 留空表示同域，若前后端分离请填写如 'http://localhost:3000'
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let state = {
+  cookies: '',
+  phone: '',
+  loggedIn: false,
+}
+let smsCooldown = 0
+
+// ─── Theme ────────────────────────────────────────────────────────────────────
+function toggleTheme() {
+  document.body.classList.toggle('light')
+  const btn = document.querySelector('.theme-btn')
+  btn.textContent = document.body.classList.contains('light') ? '🌙 夜间模式' : '☀️ 日间模式'
+  localStorage.setItem('theme', document.body.classList.contains('light') ? 'light' : 'dark')
+}
+if (localStorage.getItem('theme') === 'light') {
+  document.body.classList.add('light')
+  document.querySelector('.theme-btn').textContent = '☀️ 日间模式'
+}
+
+// ─── Toast ────────────────────────────────────────────────────────────────────
+function toast(msg, type = '') {
+  const el = document.getElementById('toast')
+  el.textContent = msg
+  el.className = 'toast show ' + type
+  setTimeout(() => el.className = 'toast', 2500)
+}
+
+// ─── Tabs ─────────────────────────────────────────────────────────────────────
+function switchTab(idx) {
+  document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', i === idx))
+  document.querySelectorAll('.tab-panel').forEach((p, i) => p.classList.toggle('active', i === idx))
+}
+
+// ─── API helper ───────────────────────────────────────────────────────────────
+async function post(path, body) {
+  const r = await fetch(API + path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  return r.json()
+}
+
+// ─── SMS Countdown ────────────────────────────────────────────────────────────
+function startCountdown() {
+  smsCooldown = 60
+  const btn = document.getElementById('sendSmsBtn')
+  const t = setInterval(() => {
+    btn.textContent = `${smsCooldown}s 后重发`
+    btn.disabled = true
+    smsCooldown--
+    if (smsCooldown < 0) {
+      clearInterval(t)
+      btn.textContent = '发送验证码'
+      btn.disabled = false
+    }
+  }, 1000)
+}
+
+// ─── Send SMS ─────────────────────────────────────────────────────────────────
+async function sendSms() {
+  const phone = document.getElementById('phone').value.trim()
+  if (!/^1[3-9]\d{9}$/.test(phone)) return toast('请输入正确的手机号', 'error')
+  const btn = document.getElementById('sendSmsBtn')
+  btn.disabled = true
+  btn.innerHTML = '<span class="spinner"></span>发送中'
+  try {
+    // Step 1: random login init
+    const r1 = await post('/api/random-login', { phone })
+    // Step 2: send sms
+    const r2 = await post('/api/send-sms', { phone, token: r1.token || '', randNum: r1.randNum || '' })
+    if (r2.code === '0' || r2.resultCode === '0000') {
+      toast('验证码已发送', 'success')
+      startCountdown()
+    } else {
+      toast(r2.msg || r2.message || '发送失败，请重试', 'error')
+      btn.disabled = false
+      btn.textContent = '发送验证码'
+    }
+  } catch (e) {
+    toast('网络错误: ' + e.message, 'error')
+    btn.disabled = false
+    btn.textContent = '发送验证码'
+  }
+}
+
+// ─── SMS Login ────────────────────────────────────────────────────────────────
+async function loginSms() {
+  const phone = document.getElementById('phone').value.trim()
+  const code = document.getElementById('smsCode').value.trim()
+  if (!phone || !code) return toast('请填写手机号和验证码', 'error')
+  const btn = document.querySelector('#panel-sms .btn-primary')
+  btn.innerHTML = '<span class="spinner"></span>登录中'
+  btn.disabled = true
+  try {
+    const r = await post('/api/verify-login', { phone, smsCode: code })
+    if (r.data && (r.data.code === '0' || r.data.resultCode === '0000' || r.cookies)) {
+      state.cookies = r.cookies || ''
+      state.phone = phone
+      state.loggedIn = true
+      onLoginSuccess()
+    } else {
+      toast(r.data?.msg || r.data?.message || '登录失败', 'error')
+    }
+  } catch (e) {
+    toast('网络错误: ' + e.message, 'error')
+  }
+  btn.innerHTML = '登录'
+  btn.disabled = false
+}
+
+// ─── ECS Login ────────────────────────────────────────────────────────────────
+async function loginEcs() {
+  const token = document.getElementById('ecsToken').value.trim()
+  const phone = document.getElementById('ecsPhone').value.trim() || '已登录'
+  if (!token) return toast('请输入 ECS Token', 'error')
+  const btn = document.querySelector('#panel-ecs .btn-primary')
+  btn.innerHTML = '<span class="spinner"></span>登录中'
+  btn.disabled = true
+  try {
+    const r = await post('/api/ecs-login', { ecsToken: token })
+    if (r.success) {
+      state.cookies = `ecs_token=${token}; ` + (r.cookies || '')
+      state.phone = phone
+      state.loggedIn = true
+      onLoginSuccess()
+    } else {
+      toast(r.error || '登录失败，请检查 Token', 'error')
+    }
+  } catch (e) {
+    toast('网络错误: ' + e.message, 'error')
+  }
+  btn.innerHTML = '使用 Token 登录'
+  btn.disabled = false
+}
+
+// ─── On Login Success ─────────────────────────────────────────────────────────
+function onLoginSuccess() {
+  document.getElementById('loginCard').style.display = 'none'
+  document.getElementById('queryPanel').style.display = 'block'
+  const bar = document.getElementById('loginStatus')
+  bar.style.display = 'flex'
+  document.getElementById('loginPhone').textContent = state.phone
+  toast('登录成功', 'success')
+}
+
+function logout() {
+  state = { cookies: '', phone: '', loggedIn: false }
+  document.getElementById('loginCard').style.display = 'block'
+  document.getElementById('queryPanel').style.display = 'none'
+  document.getElementById('loginStatus').style.display = 'none'
+  ;['speedResult','flowResult','pkgResult'].forEach(id => {
+    document.getElementById(id).innerHTML = '<div class="empty">点击查询获取数据</div>'
+  })
+}
+
+// ─── Query Speed / QCI ────────────────────────────────────────────────────────
+async function querySpeed() {
+  const el = document.getElementById('speedResult')
+  el.innerHTML = '<div class="empty"><span class="spinner"></span>查询中...</div>'
+  try {
+    const r = await post('/api/speed-qci', { cookies: state.cookies })
+    renderSpeed(r, el)
+  } catch (e) {
+    el.innerHTML = `<div class="empty" style="color:var(--red)">查询失败: ${e.message}</div>`
+  }
+}
+
+function renderSpeed(data, el) {
+  // Normalize: try common field names from 10010 API
+  const d = data?.data || data?.result || data || {}
+  const arr = Array.isArray(d) ? d : [d]
+  const item = arr[0] || {}
+
+  // Extract fields (field names may vary by account type)
+  const upRate = item.upRate || item.uploadRate || item.upSpeed || item.up_rate || '--'
+  const downRate = item.downRate || item.downloadRate || item.downSpeed || item.down_rate || '--'
+  const qci = item.qci || item.QCI || item.qciValue || '--'
+  const status = item.status || item.networkStatus || item.fivegStatus || '--'
+  const rateName = item.rateName || item.rateLevel || item.speedLevel || ''
+
+  el.innerHTML = `
+    <div class="info-grid">
+      <div class="info-item">
+        <div class="info-label">下行速率</div>
+        <div class="speed-display">
+          <span class="speed-num">${formatRate(downRate)}</span>
+          <span class="speed-unit">Mbps</span>
+        </div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">上行速率</div>
+        <div class="speed-display">
+          <span class="speed-num">${formatRate(upRate)}</span>
+          <span class="speed-unit">Mbps</span>
+        </div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">QCI 等级</div>
+        <div style="margin-top:6px">
+          <span class="qci-chip">QCI ${qci}</span>
+          ${qci !== '--' ? `<div style="font-size:11px;color:var(--text3);margin-top:6px">${qciDesc(qci)}</div>` : ''}
+        </div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">当前状态</div>
+        <div style="margin-top:6px">
+          <span class="badge ${status === '--' ? 'badge-amber' : 'badge-green'}">${status}</span>
+          ${rateName ? `<div style="font-size:12px;color:var(--text2);margin-top:6px">${rateName}</div>` : ''}
+        </div>
+      </div>
+    </div>
+    ${data.code && data.code !== '0' ? `<div style="margin-top:12px;font-size:12px;color:var(--text3)">原始响应: ${JSON.stringify(data).slice(0,200)}</div>` : ''}
+  `
+}
+
+function formatRate(v) {
+  if (v === '--' || v === null || v === undefined) return '--'
+  const n = parseFloat(v)
+  if (isNaN(n)) return v
+  // If value is in Kbps convert to Mbps
+  if (n > 10000) return (n / 1000).toFixed(0)
+  return n % 1 === 0 ? n : n.toFixed(1)
+}
+
+function qciDesc(q) {
+  const map = {
+    '1': 'VoIP / 实时语音',
+    '2': '视频通话（实时）',
+    '3': '实时游戏',
+    '4': '非会话视频（缓冲流）',
+    '5': 'IMS 信令',
+    '6': '视频流 / TCP 类业务',
+    '7': '语音 / 视频（直播）',
+    '8': '视频流（普通）',
+    '9': '最尽力传输（标准互联网）',
+    '79': '5G V2X 消息',
+    '80': '低延迟 eMBB',
+    '82': 'URLLC 工业自动化',
+    '83': 'URLLC（高可靠）',
+    '85': '5G 专网高优先级',
+  }
+  return map[String(q)] || '标准数据业务'
+}
+
+// ─── Query Flow ───────────────────────────────────────────────────────────────
+async function queryFlow() {
+  const el = document.getElementById('flowResult')
+  el.innerHTML = '<div class="empty"><span class="spinner"></span>查询中...</div>'
+  try {
+    const r = await post('/api/flow-info', { cookies: state.cookies })
+    renderFlow(r, el)
+  } catch (e) {
+    el.innerHTML = `<div class="empty" style="color:var(--red)">查询失败: ${e.message}</div>`
+  }
+}
+
+function renderFlow(data, el) {
+  const list = data?.data?.packageList || data?.packageList || data?.data || []
+  const arr = Array.isArray(list) ? list : [list]
+  if (!arr.length || (arr.length === 1 && !arr[0])) {
+    el.innerHTML = `<div class="empty">暂无流量数据<br><div style="font-size:11px;margin-top:6px;color:var(--text3)">${JSON.stringify(data).slice(0,120)}</div></div>`
+    return
+  }
+  el.innerHTML = '<div class="info-grid">' + arr.map(pkg => {
+    if (!pkg) return ''
+    const name = pkg.packageName || pkg.name || pkg.pkgName || '流量包'
+    const total = pkg.totalFlow || pkg.total || pkg.totalAmount || 0
+    const used = pkg.usedFlow || pkg.used || pkg.usedAmount || 0
+    const left = pkg.leftFlow || pkg.left || pkg.restAmount || (total - used)
+    const unit = pkg.unit || 'MB'
+    const pct = total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0
+    return `
+      <div class="info-item" style="grid-column: span 2">
+        <div class="info-label">${name}</div>
+        <div style="display:flex;align-items:baseline;gap:6px;margin:6px 0">
+          <span style="font-size:22px;font-weight:600">${formatNum(left)}</span>
+          <span style="font-size:12px;color:var(--text2)">${unit} 剩余 / 共 ${formatNum(total)} ${unit}</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill ${pct > 80 ? '' : 'green'}" style="width:${pct}%"></div></div>
+        <div class="progress-label"><span>已用 ${pct}%</span><span>已用 ${formatNum(used)} ${unit}</span></div>
+      </div>
+    `
+  }).join('') + '</div>'
+}
+
+function formatNum(n) {
+  const v = parseFloat(n)
+  if (isNaN(v)) return '--'
+  if (v >= 1024 && v < 1024 * 1024) return (v / 1024).toFixed(2) + ' GB'
+  return v.toLocaleString()
+}
+
+// ─── Query Packages ───────────────────────────────────────────────────────────
+async function queryPackages() {
+  const el = document.getElementById('pkgResult')
+  el.innerHTML = '<div class="empty"><span class="spinner"></span>查询中...</div>'
+  try {
+    const r = await post('/api/ordered-services', { cookies: state.cookies })
+    renderPackages(r, el)
+  } catch (e) {
+    el.innerHTML = `<div class="empty" style="color:var(--red)">查询失败: ${e.message}</div>`
+  }
+}
+
+function renderPackages(data, el) {
+  // Try multiple possible response structures
+  const list = data?.data?.serviceList
+    || data?.serviceList
+    || data?.data?.orderList
+    || data?.orderList
+    || data?.data
+    || []
+  const arr = Array.isArray(list) ? list : Object.values(typeof list === 'object' && list ? list : {})
+  if (!arr.length) {
+    el.innerHTML = `<div class="empty">暂无订购业务数据<br><div style="font-size:11px;margin-top:6px;color:var(--text3)">${JSON.stringify(data).slice(0,200)}</div></div>`
+    return
+  }
+  el.innerHTML = `
+    <div style="font-size:12px;color:var(--text2);margin-bottom:12px">共查询到 <strong>${arr.length}</strong> 项已订业务</div>
+    <div class="pkg-list">
+      ${arr.map(pkg => {
+        const name = pkg.serviceName || pkg.name || pkg.productName || pkg.pkgName || '未知业务'
+        const price = pkg.fee || pkg.price || pkg.amount || pkg.monthlyFee || ''
+        const status = pkg.status || pkg.state || pkg.orderStatus || ''
+        const startDate = pkg.startTime || pkg.beginDate || pkg.orderDate || ''
+        const endDate = pkg.endTime || pkg.endDate || pkg.expireDate || ''
+        const code = pkg.serviceCode || pkg.productCode || pkg.spCode || ''
+        const isHidden = pkg.isHidden === '1' || pkg.hidden === true || pkg.channelType === 'H'
+        return `
+          <div class="pkg-item">
+            <div style="flex:1;min-width:0">
+              <div class="pkg-name">
+                ${name}
+                ${isHidden ? '<span class="badge badge-amber" style="margin-left:6px;font-size:10px">隐藏包</span>' : ''}
+              </div>
+              <div class="pkg-meta">
+                ${code ? `编码: ${code}` : ''}
+                ${startDate ? ` · 开始: ${startDate}` : ''}
+                ${endDate ? ` · 到期: ${endDate}` : ''}
+                ${status ? ` · ${status}` : ''}
+              </div>
+            </div>
+            ${price ? `<div class="pkg-price">¥${price}</div>` : ''}
+          </div>
+        `
+      }).join('')}
+    </div>
+  `
+}
+</script>
+</body>
+</html>
