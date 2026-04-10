@@ -1,66 +1,107 @@
-# 联通查询面板
+# 余量面板 · 联通查询
 
-查询联通卡速率、QCI等级、流量余量、隐藏包等信息。
+> 查询联通卡速率、QCI 及隐藏流量包的前端面板，基于 Vue 3 + Vite + Tailwind CSS 构建。
 
-## 功能
+[![Build & Push Docker Image](https://github.com/YOUR_USERNAME/unicom-panel/actions/workflows/docker.yml/badge.svg)](https://github.com/YOUR_USERNAME/unicom-panel/actions/workflows/docker.yml)
 
-- ✅ 短信验证码登录
-- ✅ ECS Token 直接登录
-- ✅ 5G 速率查询（上行/下行）
-- ✅ QCI 等级查询（含说明）
-- ✅ 流量余量查询（带进度条）
-- ✅ 已订业务查询（含隐藏包标记）
-- ✅ 夜间/日间主题切换
+---
 
-## 部署方式
+## ✨ 功能
 
-### 方式一：Node.js 直接运行
+- 📶 **速率 & QCI 查询** — 实时查看当前 5G 速率与 QCI 等级
+- 📦 **流量包余量** — 支持查看普通流量包及隐藏流量包
+- 📋 **已订业务** — 列出当前账号所有已订阅业务
+- 🔐 **两种登录方式** — 短信验证码 / ECS Token 直接登录
+- 🌙 **暗色主题** — 极简工业风设计
+- 🐳 **Docker 一键部署** — 内置 Nginx 反向代理，无需额外配置
 
-```bash
-npm install
-npm start
-# 访问 http://localhost:3000
-```
+---
 
-### 方式二：Docker
+## 🚀 快速部署
+
+### Docker（推荐）
 
 ```bash
-docker build -t unicom-panel .
-docker run -d -p 3000:3000 unicom-panel
-# 访问 http://localhost:3000
+# 从 GHCR 拉取最新镜像
+docker run -d --rm -p 8080:80 ghcr.io/YOUR_USERNAME/unicom-panel:latest
 ```
 
-### 方式三：修改端口
+访问 `http://localhost:8080` 即可使用。
+
+### docker-compose
+
+```yaml
+version: '3.8'
+services:
+  unicom-panel:
+    image: ghcr.io/YOUR_USERNAME/unicom-panel:latest
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+```
+
+---
+
+## 🛠 本地开发
 
 ```bash
-PORT=8080 node server.js
+# 克隆项目
+git clone https://github.com/YOUR_USERNAME/unicom-panel.git
+cd unicom-panel
+
+# 安装依赖（推荐 pnpm）
+pnpm install
+# 或 npm install
+
+# 启动开发服务器（已配置代理，自动转发联通接口）
+pnpm dev
 ```
 
-## 文件结构
+---
 
+## 🔑 登录说明
+
+### 短信验证码登录
+填写手机号 → 获取验证码 → 登录
+
+### ECS Token 登录
+1. 在手机上打开联通 App，进入任意页面
+2. 使用抓包工具（如 Charles、Surge、mitmproxy）捕获请求
+3. 在请求头中找到 `ecs_token` 字段，复制其值
+4. 填入 Token 登录界面即可
+
+---
+
+## 📦 GitHub Actions 自动构建
+
+推送到 `main` 分支或打 Tag 后，GitHub Actions 会自动：
+
+1. 使用多阶段 Dockerfile 构建前端（Node 20）
+2. 用 Nginx 打包为生产镜像
+3. 推送到 **GitHub Container Registry (GHCR)**，支持 `amd64` + `arm64`
+
+**镜像地址：**
 ```
-unicom-panel/
-├── server.js          # Express 代理服务（解决跨域）
-├── package.json
-├── Dockerfile
-└── public/
-    └── index.html     # 前端页面
+ghcr.io/YOUR_USERNAME/unicom-panel:latest
+ghcr.io/YOUR_USERNAME/unicom-panel:v1.0.0   # 打 tag 后自动生成
 ```
 
-## API 端点
+---
 
-| 端点 | 说明 |
+## 📡 使用到的接口
+
+| 用途 | 接口 |
 |------|------|
-| POST /api/random-login | 初始化登录 |
-| POST /api/send-sms | 发送短信验证码 |
-| POST /api/verify-login | 验证码登录 |
-| POST /api/ecs-login | ECS Token 登录 |
-| POST /api/speed-qci | 查询5G速率和QCI |
-| POST /api/flow-info | 查询流量余量 |
-| POST /api/ordered-services | 查询已订业务（含隐藏包） |
+| 发送验证码 | `POST /mobileService/sendRadomNum.htm` |
+| 短信登录 | `POST /mobileService/radomLogin.htm` |
+| 速率 & QCI | `POST /servicebusiness/query/fiveg/getbasicdata` |
+| 流量余量 | `POST /servicequerybusiness/operationservice/queryOcsPackageFlowLeftContentRevisedInJune` |
+| 已订业务 | `POST /servicebusiness/newOrdered/queryOrderRelationship` |
 
-## 注意事项
+> 所有接口通过 Nginx 反向代理转发，已处理跨域问题。
 
-- 本工具仅供个人学习研究使用
-- 所有请求通过服务端代理转发，解决浏览器跨域限制
-- Cookie 存储在客户端内存中，刷新页面需重新登录
+---
+
+## ⚠️ 免责声明
+
+本项目仅供个人学习与研究使用，请勿滥用接口或用于商业目的。

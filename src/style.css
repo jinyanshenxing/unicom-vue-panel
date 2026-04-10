@@ -1,0 +1,82 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #0d0d0d;
+  color: #e8e8e8;
+  font-family: 'IBM Plex Sans SC', sans-serif;
+  min-height: 100vh;
+}
+
+/* 滚动条 */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: #161616;
+}
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 2px;
+}
+
+/* 进度条动画 */
+@keyframes progress-shine {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+.progress-bar {
+  background: linear-gradient(
+    90deg,
+    #e60012 0%,
+    #ff4455 40%,
+    #e60012 60%,
+    #b50010 100%
+  );
+  background-size: 200% auto;
+  animation: progress-shine 2s linear infinite;
+}
+
+/* 数字闪烁 */
+@keyframes number-glow {
+  0%, 100% { text-shadow: 0 0 8px rgba(230, 0, 18, 0.4); }
+  50% { text-shadow: 0 0 20px rgba(230, 0, 18, 0.8); }
+}
+
+.glow-text {
+  animation: number-glow 2s ease-in-out infinite;
+}
+
+/* 卡片悬浮 */
+.card-hover {
+  transition: border-color 0.2s, transform 0.2s;
+}
+.card-hover:hover {
+  border-color: #e60012 !important;
+  transform: translateY(-2px);
+}
+
+/* 输入框焦点 */
+input:focus {
+  outline: none;
+}
+
+/* loading dots */
+@keyframes dot-bounce {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40% { transform: scale(1); opacity: 1; }
+}
+.dot-1 { animation: dot-bounce 1.2s infinite 0s; }
+.dot-2 { animation: dot-bounce 1.2s infinite 0.2s; }
+.dot-3 { animation: dot-bounce 1.2s infinite 0.4s; }
